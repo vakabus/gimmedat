@@ -1,7 +1,8 @@
 {% extends "layout.html.j2" %}
 {% block body %}
-<h1>Upload file</h1>
-<p>Use this URL to upload up to {{ maxsize }} bytes of data in multiple files.</p>
+<h1>Upload file(s)</h1>
+<p>Use this URL to upload up to {{ maxsize }} bytes of data in as many files as you want.</p>
+<p>You have {{ remaining_sec }} seconds left until this link expires.</p>
 <pre><code>
 curl "{{ url }}" -T path/to/file/to/upload.ext
 </code></pre>

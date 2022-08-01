@@ -1,6 +1,8 @@
 {% extends "layout.html.j2" %}
 {% block body %}
+{% if valid_secret %}
 <h1>Upload link</h1>
+<p>Link generated. Send it to your friends!</p>
 <input type="text" value="{{ link }}" id="input">
 <button id="copy">Copy</button>
 <script>
@@ -9,4 +11,8 @@
     document.execCommand("copy");
     };
 </script>
+{% else %}
+<h1> Upload link - invalid secret</h1>
+<p>Sorry, the secret you've entered is not the one the server was started with. Please enter the correct secret.</p>
+{% endif %}
 {% endblock %}

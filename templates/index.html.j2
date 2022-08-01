@@ -1,5 +1,28 @@
 {% extends "layout.html.j2" %}
 {% block body %}
-<h1>Gimmethat</h1>
+<h1>Gimmedat</h1>
 <p>A personal tool for securly ingesting files from other people. With the right link, you can upload any data within the defined size limit.</p>
+<p>You should have received a link with a magic code that will allow you to upload files. In such case, access that link directly. If you want to generate a new link, use the form bellow.</p>
+<h2>Create a new upload link</h2>
+<form method="POST" action="/gen">
+    <div>
+        <label for="secret"> Secret </label>
+        <input type="password" id="secret" name="s" placeholder="Secret">
+    </div>
+    <div>
+        <label for="name"> Name </label>
+        <input type="text" id="name" name="n" placeholder="Name">
+    </div>
+    <div>
+        <label for="maxsize"> Max data size </label>
+        <input type="number" id="maxsize" name="m" value="10000000">
+    </div>
+    <div>
+        <label for="remaining_sec"> Link valid for (sec) </label>
+        <input type="number" id="remaining_sec" name="t" value="{{ 7 * 24 * 3600}}">
+    </div>
+    <div>
+        <input type="submit" value="Generate link">
+    </div>
+</form>
 {% endblock %}
