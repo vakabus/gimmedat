@@ -1,0 +1,21 @@
+{% extends "layout.html.j2" %}
+{% block body %}
+<h1>Upload link generator</h1>
+<form method="POST">
+    <div>
+        <input type="password" id="secret" name="s" placeholder="Secret">
+        <label for="secret"> Secret </label>
+    </div>
+    <div>
+        <input type="text" id="name" name="n" placeholder="Name">
+        <label for="name"> Name </label>
+    </div>
+    <div>
+        <input type="number" id="maxsize" name="m" value="10000000">
+        <label for="maxsize"> Max data size </label>
+    </div>
+    <div>
+        <input type="submit" value="Generate link">
+    </div>
+</form>
+{% endblock %}

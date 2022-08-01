@@ -1,0 +1,12 @@
+{% extends "layout.html.j2" %}
+{% block body %}
+<h1>Upload link</h1>
+<input type="text" value="{{ link }}" id="input">
+<button id="copy">Copy</button>
+<script>
+    document.querySelector("#copy").onclick = function () {
+    document.querySelector("#input").select();
+    document.execCommand("copy");
+    };
+</script>
+{% endblock %}

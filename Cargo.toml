@@ -1,0 +1,21 @@
+[package]
+name = "gimmethat"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rust-argon2 = "0.8"
+askama = { version = "0.11.1", features = ["with-tide"] }
+askama_tide = "0.14.0"
+async-std = "1.12.0"
+chacha20poly1305 = "0.9.1"
+clap = { version = "3.2.16", features = ["derive"] }
+serde = "1.0.140"
+tide = "0.16.0"
+serde_urlencoded = "0.7.1"
+base64 = "0.13.0"
+serde_derive = "1.0.140"
+rand = { version = "0.8.5", features = ["getrandom"] }
+rand_core = "0.6.3"
