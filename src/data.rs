@@ -1,8 +1,12 @@
+use async_std::fs;
 use async_std::fs::DirBuilder;
 use async_std::fs::File;
 use async_std::fs::OpenOptions;
+use async_std::path::Path;
+use async_std::stream::StreamExt;
 use serde_derive::{Deserialize, Serialize};
 
+use std::os::unix::prelude::MetadataExt;
 use std::str;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -25,8 +29,26 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn size_limit(&self) -> u64 {
-        self.s
+    async fn existing_data_size(&self) -> u64 {
+        let path = Path::new(&self.d);
+        if !(path.exists().await && path.is_dir().await) {
+            return 0;
+        }
+
+        let mut size = 0u64;
+        let mut paths = fs::read_dir(path).await.unwrap();
+        while let Some(res) = paths.next().await {
+            if let Ok(dir) = res {
+                println!("{:?}", dir.file_name());
+                size += dir.metadata().await.unwrap().size()
+            }
+        }
+
+        size
+    }
+
+    pub async fn size_limit(&self) -> u64 {
+        self.s - self.existing_data_size().await
     }
 
     pub fn new(dir_name: String, maxsize: u64, validity_duration: u64) -> Self {
@@ -73,7 +95,13 @@ impl Token {
             .write(true)
             .open(format!("{}/{name}", self.d))
             .await
-            .map_err(|err| format!("error: {}", err.to_string()))
+            .map_err(|err| {
+                if err.raw_os_error().unwrap_or(0) == 17 {
+                    "file already exists".to_owned()
+                } else {
+                    format!("error: {}", err.to_string())
+                }
+            })
     }
 }
 

@@ -32,8 +32,8 @@ impl CryptoState {
 
     pub fn decrypt(&self, s: &str) -> Result<String, String> {
         let bytes = base64::decode_config(s, base64::URL_SAFE).map_err(|err| err.to_string())?;
-        let nonce = Nonce::from_slice(&bytes[bytes.len()-12..]);
-        let ciphertext: &[u8] = &bytes[..bytes.len()-12];
+        let nonce = Nonce::from_slice(&bytes[bytes.len() - 12..]);
+        let ciphertext: &[u8] = &bytes[..bytes.len() - 12];
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
         let plaintext = cipher
             .decrypt(nonce, ciphertext)
@@ -44,7 +44,7 @@ impl CryptoState {
     }
 
     pub fn encrypt(&self, plaintext: &str) -> String {
-        let nonce = Nonce::from(OsRng::default().gen::<[u8;12]>());
+        let nonce = Nonce::from(OsRng::default().gen::<[u8; 12]>());
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
         let mut ciphertext = cipher.encrypt(&nonce, plaintext.as_bytes()).unwrap();
         ciphertext.extend_from_slice(&nonce);

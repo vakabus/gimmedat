@@ -1,5 +1,5 @@
 use askama::Template;
-use async_std::task;
+use async_std::{io::ReadExt, task};
 use data::Token;
 use rand_core::{OsRng, RngCore};
 use std::str;
@@ -103,7 +103,11 @@ async fn post_gen(mut req: Request<Context>) -> tide::Result {
         .create_link(&crypt.encrypt(&Token::new(body.n, body.m, body.t).to_string()));
     let valid_secret = crypt == req.state().crypto;
 
-    Ok(GenResTemplate { link: &link, valid_secret }.into())
+    Ok(GenResTemplate {
+        link: &link,
+        valid_secret,
+    }
+    .into())
 }
 
 async fn index(_req: Request<Context>) -> tide::Result {
@@ -131,18 +135,34 @@ async fn upload(req: Request<Context>) -> tide::Result {
         ));
     }
 
+    let size_limit = tok.size_limit().await;
+    if req.len().unwrap_or(0) as u64 > size_limit {
+        return Err(tide::Error::from_str(400, "data size limit exceeded"));
+    }
+    if size_limit == 0 {
+        return Err(tide::Error::from_str(
+            400,
+            "no more data is allowed to be uploaded, limit exceeded",
+        ));
+    }
+
     let file = tok
         .create_file_writer(name)
         .await
         .map_err(|err| tide::Error::from_str(500, err))?;
-    let bytes_written = copy(req, file).await?;
+    let bytes_written = copy(req.take(size_limit), file).await?;
 
     /*info!("file written", {
         bytes: bytes_written,
         path: fs_path.canonicalize()?.to_str()
     });*/
 
-    Ok(format!("{} bytes uploaded\n", bytes_written).into())
+    let additional_msg = if tok.size_limit().await == 0 {
+        ", upload size limit exceeded (or reached exactly 0)"
+    } else {
+        ""
+    };
+    Ok(format!("{} bytes uploaded{}\n", bytes_written, additional_msg).into())
 }
 
 async fn upload_help(req: Request<Context>) -> tide::Result {
@@ -157,8 +177,12 @@ async fn upload_help(req: Request<Context>) -> tide::Result {
     let url = req.state().create_link(token);
     match tok {
         Ok(query) => Ok(UploadHelpTemplate {
-            remaining_sec: if query.is_expired() { 0 } else { query.remaining_time_secs() },
-            maxsize: query.size_limit(),
+            remaining_sec: if query.is_expired() {
+                0
+            } else {
+                query.remaining_time_secs()
+            },
+            maxsize: query.size_limit().await,
             url: &url,
         }
         .into()),
