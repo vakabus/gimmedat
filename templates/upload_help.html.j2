@@ -40,8 +40,37 @@
 
 <!-- script for file upload -->
 <script>
+    function makeRequest(method, url, blob, progressCallback) {
+        return new Promise(function (resolve, reject) {
+            let xhr = new XMLHttpRequest();
+            xhr.open(method, url);
+            xhr.onload = function () {
+                if (this.status >= 200 && this.status < 300) {
+                    resolve(xhr.response);
+                } else {
+                    reject({
+                        status: this.status,
+                        statusText: xhr.statusText
+                    });
+                }
+            };
+            xhr.onerror = function () {
+                reject({
+                    status: this.status,
+                    statusText: xhr.statusText
+                });
+            };
+            xhr.upload.onprogress = function (ev) {
+                progressCallback(ev.loaded, ev.total)
+            }
+            xhr.send(blob);
+        });
+    }
+    
+    
+
     let totalFiles = 0;
-    let processedFiles = 0;
+    let processedFiles = 1;
     let fileInput = document.getElementById("file")
     let status = document.getElementById("status")
     let bytes = document.getElementById("bytes")
@@ -51,14 +80,15 @@
         let files = fileInput.files
         totalFiles += files.length;
         for (let f of files) {
-            await fetch(`{{ url }}${f.name}`, {
-                method: "PUT",
-                body: new Blob([f]),
+            status.innerText = `Uploading file ${processedFiles}/${totalFiles}`
+            const prevSize = parseInt(bytes.innerText)
+            
+            await makeRequest("PUT", `{{ url }}${f.name}`, f, (p,t) => {
+                status.innerText = `Uploading file ${processedFiles}/${totalFiles}, bytes ${p}/${t}`
+                bytes.innerText = `${prevSize - p}`
             })
-            processedFiles += 1;
 
-            status.innerText = `Uploading... ${processedFiles}/${totalFiles}`
-            bytes.innerText = `${parseInt(bytes.innerText) - f.size}`
+            processedFiles += 1;
 
             // add the file name to the list of uploaded files
             let node = document.createElement('li');
