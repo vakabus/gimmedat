@@ -39,7 +39,6 @@ impl Token {
         let mut paths = fs::read_dir(path).await.unwrap();
         while let Some(res) = paths.next().await {
             if let Ok(dir) = res {
-                println!("{:?}", dir.file_name());
                 size += dir.metadata().await.unwrap().size()
             }
         }

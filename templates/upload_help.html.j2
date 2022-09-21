@@ -1,9 +1,56 @@
 {% extends "layout.html.j2" %}
 {% block body %}
 <h1>Upload file(s)</h1>
-<p>Use this URL to upload up to {{ maxsize }} bytes of data in as many files as you want.</p>
-<p>You have {{ remaining_sec }} seconds left until this link expires.</p>
-<pre><code>
-curl "{{ url }}" -T path/to/file/to/upload.ext
-</code></pre>
+<p>Use this URL to upload up to <b><span id="bytes">{{ maxsize }}</span> bytes</b> of data in as many files as you want.</p>
+<p>You have <b><span id="remaining">{{ remaining_sec }}</span> seconds left</b> until this link expires.</p>
+<script>
+    let remaining = document.getElementById("remaining")
+    let remaining_sec = parseInt(remaining.innerText)
+    setInterval(() => {
+        remaining_sec--
+        remaining.innerText = `${remaining_sec}`
+    }, 1000)
+</script>
+
+<div>
+    <hr>
+    <h3>File upload with curl</h3>
+    <pre><code>
+    curl "{{ url }}" -T path/to/file/to/upload.ext
+    </code></pre>
+</div>
+
+<div>
+    <hr>
+    <h3>File upload from browser</h3>
+    <p>Select files you want to upload (can be more than one)</p>
+    <input type="file" id="file" multiple/>
+    <p id="status">No files selected...</p>
+    <script>
+        let totalFiles = 0;
+        let processedFiles = 0;
+        let fileInput = document.getElementById("file")
+        let status = document.getElementById("status")
+        let bytes = document.getElementById("bytes")
+
+        fileInput.onchange = async (event) => {
+            let files = fileInput.files
+            totalFiles += files.length;
+            for (let f of files) {
+                let name = f.name
+                await fetch(`{{ url }}${name}`, {
+                    method: "PUT",
+                    body: new Blob([f]),
+                })
+                processedFiles += 1;
+
+                status.innerText = `Uploading... ${processedFiles}/${totalFiles}`
+                bytes.innerText = `${parseInt(bytes.innerText) - f.size}`
+
+            }
+            status.innerText = `All ${totalFiles} files uploaded!`
+            fileInput.value = "";
+        }
+    </script>
+</div>
 {% endblock %}
