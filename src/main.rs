@@ -1,5 +1,9 @@
 use askama::Template;
-use async_std::{io::ReadExt, task};
+use async_std::{
+    io::ReadExt,
+    stream::{IntoStream, StreamExt},
+    task,
+};
 use data::Token;
 use rand_core::{OsRng, RngCore};
 use std::str;
@@ -61,6 +65,7 @@ struct UploadHelpTemplate<'a> {
     remaining_sec: u64,
     maxsize: u64,
     url: &'a str,
+    uploaded_files: Vec<String>,
 }
 
 #[derive(Template)]
@@ -184,6 +189,16 @@ async fn upload_help(req: Request<Context>) -> tide::Result {
             },
             maxsize: query.size_limit().await,
             url: &url,
+            uploaded_files: query
+                .file_names()
+                .await
+                .into_stream()
+                .map(|r| {
+                    r.map(|d| d.file_name().into_string().unwrap())
+                        .unwrap_or("ERROR".to_owned())
+                })
+                .collect()
+                .await,
         }
         .into()),
         Err(err) => Err(tide::Error::from_str(400, err)),

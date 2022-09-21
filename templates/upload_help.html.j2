@@ -26,31 +26,47 @@
     <p>Select files you want to upload (can be more than one)</p>
     <input type="file" id="file" multiple/>
     <p id="status">No files selected...</p>
-    <script>
-        let totalFiles = 0;
-        let processedFiles = 0;
-        let fileInput = document.getElementById("file")
-        let status = document.getElementById("status")
-        let bytes = document.getElementById("bytes")
-
-        fileInput.onchange = async (event) => {
-            let files = fileInput.files
-            totalFiles += files.length;
-            for (let f of files) {
-                let name = f.name
-                await fetch(`{{ url }}${name}`, {
-                    method: "PUT",
-                    body: new Blob([f]),
-                })
-                processedFiles += 1;
-
-                status.innerText = `Uploading... ${processedFiles}/${totalFiles}`
-                bytes.innerText = `${parseInt(bytes.innerText) - f.size}`
-
-            }
-            status.innerText = `All ${totalFiles} files uploaded!`
-            fileInput.value = "";
-        }
-    </script>
 </div>
+
+<div>
+    <hr>
+    <h3>Uploaded files</h3>
+    <ul id="uploaded-files">
+        {% for name in uploaded_files %}
+        <li>{{ name }}</li>
+        {% endfor %}
+    </ul>
+</div>
+
+<!-- script for file upload -->
+<script>
+    let totalFiles = 0;
+    let processedFiles = 0;
+    let fileInput = document.getElementById("file")
+    let status = document.getElementById("status")
+    let bytes = document.getElementById("bytes")
+    let uploadedFiles = document.getElementById("uploaded-files")
+
+    fileInput.onchange = async (event) => {
+        let files = fileInput.files
+        totalFiles += files.length;
+        for (let f of files) {
+            await fetch(`{{ url }}${f.name}`, {
+                method: "PUT",
+                body: new Blob([f]),
+            })
+            processedFiles += 1;
+
+            status.innerText = `Uploading... ${processedFiles}/${totalFiles}`
+            bytes.innerText = `${parseInt(bytes.innerText) - f.size}`
+
+            // add the file name to the list of uploaded files
+            let node = document.createElement('li');
+            node.appendChild(document.createTextNode(encodeURIComponent(f.name)));
+            uploadedFiles.appendChild(node)
+        }
+        status.innerText = `All ${totalFiles} files uploaded!`
+        fileInput.value = "";
+    }
+</script>
 {% endblock %}

@@ -2,6 +2,7 @@ use async_std::fs;
 use async_std::fs::DirBuilder;
 use async_std::fs::File;
 use async_std::fs::OpenOptions;
+use async_std::fs::ReadDir;
 use async_std::path::Path;
 use async_std::stream::StreamExt;
 use serde_derive::{Deserialize, Serialize};
@@ -29,15 +30,19 @@ pub struct Token {
 }
 
 impl Token {
-    async fn existing_data_size(&self) -> u64 {
+    pub async fn file_names(&self) -> ReadDir {
         let path = Path::new(&self.d);
         if !(path.exists().await && path.is_dir().await) {
-            return 0;
+            self.create_referenced_directory().await;
         }
 
+        fs::read_dir(path).await.unwrap()
+    }
+
+    async fn existing_data_size(&self) -> u64 {
         let mut size = 0u64;
-        let mut paths = fs::read_dir(path).await.unwrap();
-        while let Some(res) = paths.next().await {
+        let mut filenames = self.file_names().await;
+        while let Some(res) = filenames.next().await {
             if let Ok(dir) = res {
                 size += dir.metadata().await.unwrap().size()
             }
