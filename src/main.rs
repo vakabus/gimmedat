@@ -7,7 +7,7 @@ use async_std::{
 use data::Token;
 use rand_core::{OsRng, RngCore};
 use std::str;
-use tide::Request;
+use tide::{Request, utils::After};
 
 use clap::Parser;
 use serde_derive::Deserialize;
@@ -63,7 +63,7 @@ struct IndexTemplate {}
 #[template(path = "upload_help.html.j2")]
 struct UploadHelpTemplate<'a> {
     remaining_sec: u64,
-    maxsize: u64,
+    maxsize_bytes: u64,
     url: &'a str,
     uploaded_files: Vec<String>,
 }
@@ -80,6 +80,16 @@ async fn async_main(args: Args) -> tide::Result<()> {
 
     let port = args.port;
     let mut app = tide::with_state(Context::new(&args.secret, args.base_url));
+    app.with(After(|mut res: tide::Response| async {
+        if res.error().is_some() {
+            let msg = match res.take_error() {
+                Some(msg) => format!("{}", msg),
+                None => String::from("unknown error"),
+            };
+            res.set_body(msg);
+        }
+        Ok(res)
+    }));
     app.at("/").get(index);
     app.at("/gen").post(post_gen);
     app.at("/:token/").put(upload).get(upload_help);
@@ -127,7 +137,7 @@ async fn upload(req: Request<Context>) -> tide::Result {
         .state()
         .crypto
         .decrypt(token)
-        .map_err(|err| tide::Error::from_str(500, err))?;
+        .map_err(|err| tide::Error::from_str(401, err))?;
     let tok = Token::from_str(&tok).unwrap();
 
     if tok.is_expired() {
@@ -154,7 +164,7 @@ async fn upload(req: Request<Context>) -> tide::Result {
     let file = tok
         .create_file_writer(name)
         .await
-        .map_err(|err| tide::Error::from_str(500, err))?;
+        .map_err(|err| tide::Error::from_str(403, err))?;
     let bytes_written = copy(req.take(size_limit), file).await?;
 
     /*info!("file written", {
@@ -187,7 +197,7 @@ async fn upload_help(req: Request<Context>) -> tide::Result {
             } else {
                 query.remaining_time_secs()
             },
-            maxsize: query.size_limit().await,
+            maxsize_bytes: query.size_limit().await,
             url: &url,
             uploaded_files: query
                 .file_names()

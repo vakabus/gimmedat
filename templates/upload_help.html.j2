@@ -1,24 +1,42 @@
 {% extends "layout.html.j2" %}
 {% block body %}
 <h1>Upload file(s)</h1>
-<p>Use this URL to upload up to <b><span id="bytes">{{ maxsize }}</span> bytes</b> of data in as many files as you want.</p>
-<p>You have <b><span id="remaining">{{ remaining_sec }}</span> seconds left</b> until this link expires.</p>
+
 <script>
-    let remaining = document.getElementById("remaining")
-    let remaining_sec = parseInt(remaining.innerText)
-    setInterval(() => {
-        remaining_sec--
-        remaining.innerText = `${remaining_sec}`
-    }, 1000)
+    const INITIAL_REMAINING_SEC = {{ remaining_sec }}
+    const LOAD_TIME = Date.now()
+    const INITIAL_MAX_SIZE_BYTES = {{ maxsize_bytes }}
+    let uploaded_bytes = 0
+
+    function update_time_left() {
+        let rem = document.getElementById("remaining")
+        const seconds_remaining = Math.round(INITIAL_REMAINING_SEC - (Date.now() - LOAD_TIME) / 1000)
+        const days = (seconds_remaining / (3600 * 24)) | 0
+        const hours = ((seconds_remaining - days*3600*24) / 3600) | 0
+        const minutes = ((seconds_remaining - days*3600*24 - hours*3600) / 60) | 0
+        const seconds = ((seconds_remaining - days*3600*24 - hours*3600 - minutes*60)) | 0
+        rem.innerText = `${days}d ${hours}h ${minutes}m ${seconds}s`
+    }
+
+    function update_bytes_left() {
+        let bts = document.getElementById("bytes")
+        
+        const order = Math.log2(INITIAL_MAX_SIZE_BYTES - uploaded_bytes)
+        const multiple = ((order / 10) | 0)
+        const prefix = ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi']
+        const remaning_size_in_multiples = Math.round((INITIAL_MAX_SIZE_BYTES - uploaded_bytes) / Math.pow(2, 10*multiple) * 100) / 100
+
+        if (multiple < prefix.length) {
+            bts.innerText = `${remaning_size_in_multiples}${prefix[multiple]}B`
+        } else {
+            bts.innerText = "a ridiculous amount"
+        }
+    }
 </script>
 
-<div>
-    <hr>
-    <h3>File upload with curl</h3>
-    <pre><code>
-    curl "{{ url }}" -T path/to/file/to/upload.ext
-    </code></pre>
-</div>
+
+<p>Use this URL to upload up to <b><span id="bytes">{{ maxsize_bytes }} bytes</span></b> of data in as many files as you want.</p>
+<p>You have <b><span id="remaining">{{ remaining_sec }} seconds</span> left</b> until this link expires.</p>
 
 <div>
     <hr>
@@ -26,6 +44,16 @@
     <p>Select files you want to upload (can be more than one)</p>
     <input type="file" id="file" multiple/>
     <p id="status">No files selected...</p>
+    <div id="overall" class="progressbar"><div>&nbsp;0/0</div></div>
+    <div id="single-file" class="progressbar"><div>&nbsp;0/0</div></div>
+</div>
+
+<div>
+    <hr>
+    <h3>File upload with curl</h3>
+    <pre><code>
+    curl "{{ url }}" -T path/to/file/to/upload.ext
+    </code></pre>
 </div>
 
 <div>
@@ -38,8 +66,14 @@
     </ul>
 </div>
 
-<!-- script for file upload -->
 <script>
+    /* update remaining time */
+    update_bytes_left()
+    update_time_left()
+    setInterval(update_time_left, 1000)
+
+
+    /* helper for uploading data */
     function makeRequest(method, url, blob, progressCallback) {
         return new Promise(function (resolve, reject) {
             let xhr = new XMLHttpRequest();
@@ -50,7 +84,8 @@
                 } else {
                     reject({
                         status: this.status,
-                        statusText: xhr.statusText
+                        statusText: xhr.statusText,
+                        message: xhr.responseText
                     });
                 }
             };
@@ -67,25 +102,28 @@
         });
     }
     
-    
-
-    let totalFiles = 0;
-    let processedFiles = 1;
-    let fileInput = document.getElementById("file")
-    let status = document.getElementById("status")
-    let bytes = document.getElementById("bytes")
-    let uploadedFiles = document.getElementById("uploaded-files")
+    const fileInput = document.getElementById("file")
+    const status = document.getElementById("status")
+    const uploadedFiles = document.getElementById("uploaded-files")
 
     fileInput.onchange = async (event) => {
         let files = fileInput.files
-        totalFiles += files.length;
+        let totalFiles = files.length;
+        let processedFiles = 1;
+
         for (let f of files) {
             status.innerText = `Uploading file ${processedFiles}/${totalFiles}`
-            const prevSize = parseInt(bytes.innerText)
-            
+
+            const initial_uploaded_bytes = uploaded_bytes
             await makeRequest("PUT", `{{ url }}${f.name}`, f, (p,t) => {
-                status.innerText = `Uploading file ${processedFiles}/${totalFiles}, bytes ${p}/${t}`
-                bytes.innerText = `${prevSize - p}`
+                update_progressbar("overall", processedFiles, totalFiles)
+                update_progressbar("single-file", p, t)
+                uploaded_bytes = initial_uploaded_bytes + p
+                update_bytes_left()
+            }).catch((e) => {
+                console.error("Error while uploading", f.name)
+                console.log(e)
+                alert(`Error while uploading ${f.name}: ${e.message}`)
             })
 
             processedFiles += 1;
@@ -95,7 +133,13 @@
             node.appendChild(document.createTextNode(encodeURIComponent(f.name)));
             uploadedFiles.appendChild(node)
         }
+
+        // at the end, set all status information to final
         status.innerText = `All ${totalFiles} files uploaded!`
+        update_progressbar("overall", totalFiles, totalFiles)
+        update_progressbar("single-file", 1, 1)
+
+        // and reset file input
         fileInput.value = "";
     }
 </script>
