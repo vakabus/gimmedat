@@ -18,19 +18,31 @@
         rem.innerText = `${days}d ${hours}h ${minutes}m ${seconds}s`
     }
 
-    function update_bytes_left() {
-        let bts = document.getElementById("bytes")
-        
-        const order = Math.log2(INITIAL_MAX_SIZE_BYTES - uploaded_bytes)
+    function format_bytes(bytes) {
+        const order = Math.log2(bytes)
         const multiple = ((order / 10) | 0)
         const prefix = ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi']
-        const remaning_size_in_multiples = Math.round((INITIAL_MAX_SIZE_BYTES - uploaded_bytes) / Math.pow(2, 10*multiple) * 100) / 100
+        const remaning_size_in_multiples = bytes / Math.pow(2, 10*multiple)
 
         if (multiple < prefix.length) {
-            bts.innerText = `${remaning_size_in_multiples}${prefix[multiple]}B`
+            return `${remaning_size_in_multiples.toPrecision(4)} ${prefix[multiple]}B`
         } else {
-            bts.innerText = "a ridiculous amount"
+            return "a ridiculous amount"
         }
+    }
+
+    function update_bytes_left() {
+        let bts = document.getElementById("bytes")
+        bts.innerText = format_bytes(INITIAL_MAX_SIZE_BYTES - uploaded_bytes)
+    }
+
+
+    function update_progressbar(id, step, total) {
+        let pr = document.getElementById(id)
+        let label = pr.querySelector(".label")
+        let bar = pr.querySelector(".bar")
+        label.innerText = `${format_bytes(step)}/${format_bytes(total)}`;
+        bar.style.width = `${((step/total)*100).toFixed(2)}%`;
     }
 </script>
 
@@ -44,8 +56,8 @@
     <p>Select files you want to upload (can be more than one)</p>
     <input type="file" id="file" multiple/>
     <p id="status">No files selected...</p>
-    <div id="overall" class="progressbar"><div>&nbsp;0/0</div></div>
-    <div id="single-file" class="progressbar"><div>&nbsp;0/0</div></div>
+    <div id="overall" class="progressbar" style="display: none;"><div class="label">0/0</div><div class="bar"></div></div>
+    <div id="single-file" class="progressbar" style="display: none;"><div class="label">0/0</div><div class="bar" /></div></div>
 </div>
 
 <div>
@@ -102,6 +114,7 @@
         });
     }
     
+    /** @type HTMLInputElement */
     const fileInput = document.getElementById("file")
     const status = document.getElementById("status")
     const uploadedFiles = document.getElementById("uploaded-files")
@@ -109,15 +122,25 @@
     fileInput.onchange = async (event) => {
         let files = fileInput.files
         let totalFiles = files.length;
-        let processedFiles = 1;
+        let totalSize = [...files].map(f => f.size).reduce((a,b) => a+b, 0)
+        if (totalSize > INITIAL_MAX_SIZE_BYTES - uploaded_bytes) {
+            alert(`Cannot upload ${format_bytes(totalSize)} of data`)
+            return
+        }
+        let processedFiles = 0
+        let processedSize = 0
+
+        document.getElementById("overall").style.display = totalFiles > 1 ? "block" : "none"
+        document.getElementById("single-file").style.display = "block"
 
         for (let f of files) {
-            status.innerText = `Uploading file ${processedFiles}/${totalFiles}`
+            status.innerText = `Uploading file ${processedFiles + 1}/${totalFiles}`
 
             const initial_uploaded_bytes = uploaded_bytes
             await makeRequest("PUT", `{{ url }}${f.name}`, f, (p,t) => {
-                update_progressbar("overall", processedFiles, totalFiles)
+                update_progressbar("overall", processedSize, totalSize)
                 update_progressbar("single-file", p, t)
+                processedSize += initial_uploaded_bytes + p - uploaded_bytes
                 uploaded_bytes = initial_uploaded_bytes + p
                 update_bytes_left()
             }).catch((e) => {
@@ -135,9 +158,9 @@
         }
 
         // at the end, set all status information to final
-        status.innerText = `All ${totalFiles} files uploaded!`
-        update_progressbar("overall", totalFiles, totalFiles)
-        update_progressbar("single-file", 1, 1)
+        status.innerText = totalFiles == 1 ? "File uploaded!" : `All ${totalFiles} files uploaded!`
+        update_progressbar("overall", totalSize, totalSize)
+        update_progressbar("single-file", files[files.length - 1].size, files[files.length - 1].size)
 
         // and reset file input
         fileInput.value = "";
