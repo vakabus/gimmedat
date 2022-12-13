@@ -137,7 +137,7 @@
         document.getElementById("single-file").style.display = "block"
 
         for (let f of files) {
-            status.innerText = `Uploading file ${processedFiles + 1}/${totalFiles}`
+            status.innerText = `Uploading file ${processedFiles + 1}/${totalFiles}: ${f.name}`
 
             const initial_uploaded_bytes = uploaded_bytes
             await makeRequest("PUT", `{{ url }}${f.name}`, f, (p,t) => {
@@ -161,7 +161,7 @@
         }
 
         // at the end, set all status information to final
-        status.innerText = totalFiles == 1 ? "File uploaded!" : `All ${totalFiles} files uploaded!`
+        status.innerText = totalFiles == 1 ? `File ${files[0].name} uploaded!` : `All ${totalFiles} files uploaded!`
         update_progressbar("overall", totalSize, totalSize)
         update_progressbar("single-file", files[files.length - 1].size, files[files.length - 1].size)
 
