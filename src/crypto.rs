@@ -1,4 +1,3 @@
-use argon2;
 use chacha20poly1305::aead::Aead;
 use chacha20poly1305::aead::NewAead;
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};

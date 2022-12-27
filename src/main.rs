@@ -7,7 +7,7 @@ use async_std::{
 use data::Token;
 use rand_core::{OsRng, RngCore};
 use std::str;
-use tide::{Request, utils::After};
+use tide::{utils::After, Request};
 
 use clap::Parser;
 use serde_derive::Deserialize;
@@ -46,7 +46,7 @@ impl Context {
     fn new(secret: &str, base_url: String) -> Self {
         Context {
             crypto: CryptoState::new(secret),
-            base_url: base_url,
+            base_url,
         }
     }
 
@@ -132,7 +132,7 @@ async fn index(_req: Request<Context>) -> tide::Result {
 async fn upload(req: Request<Context>) -> tide::Result {
     let token = req.param("token")?;
     let temp_name = u64::to_string(&OsRng.next_u64());
-    let name = req.param("name").unwrap_or_else(|_| &temp_name);
+    let name = req.param("name").unwrap_or(&temp_name);
     let tok = req
         .state()
         .crypto
@@ -205,7 +205,7 @@ async fn upload_help(req: Request<Context>) -> tide::Result {
                 .into_stream()
                 .map(|r| {
                     r.map(|d| d.file_name().into_string().unwrap())
-                        .unwrap_or("ERROR".to_owned())
+                        .unwrap_or_else(|_| "ERROR".to_owned())
                 })
                 .collect()
                 .await,

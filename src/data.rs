@@ -64,7 +64,7 @@ impl Token {
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.d.contains("/") {
+        if self.d.contains('/') {
             return Err("the given path contains invalid characters");
         }
 
@@ -103,7 +103,7 @@ impl Token {
                 if err.raw_os_error().unwrap_or(0) == 17 {
                     "file already exists".to_owned()
                 } else {
-                    format!("error: {}", err.to_string())
+                    format!("error: {}", err)
                 }
             })
     }
@@ -115,8 +115,8 @@ impl ToString for Token {
     }
 }
 
-impl Into<String> for Token {
-    fn into(self) -> String {
-        self.to_string()
+impl From<Token> for String {
+    fn from(t: Token) -> Self {
+        t.to_string()
     }
 }
