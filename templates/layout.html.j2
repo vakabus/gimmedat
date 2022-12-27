@@ -10,11 +10,17 @@
             margin-right: auto;
             font-size: 150%;
         }
-        .progressbar > div {
+        .progressbar > .bar {
             background-color: rgba(120, 255, 138, 0.753);
-            color: white;
             width: 0%;
+            height: 100%;
+        }
+        .progressbar > .label {
+            width: 100%;
+            color: white;
             text-align: center;
+            float: left;
+            line-height: 1.5em;
         }
         .progressbar {
             margin-top: 0.5em;
@@ -22,6 +28,7 @@
             width: 100%;
             height: 1.5em;
             border-radius: 0.2em;
+            overflow: hidden;
         }
 
         pre {
@@ -30,14 +37,6 @@
             border-radius: 0.2em;
         }
     </style>
-    <script>
-        function update_progressbar(id, step, total) {
-            let pr = document.getElementById(id)
-            let inner = pr.firstChild
-            inner.innerText = `${step}/${total}`;
-            inner.style.width = `${Math.round(step/total*100)}%`;
-        }
-    </script>
 </head>
 <body>
     {% block body %}
