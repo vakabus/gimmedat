@@ -1,23 +1,32 @@
 {% extends "layout.html.j2" %}
 {% block body %}
-<h1>Upload file(s)</h1>
 
-<p>Use this URL to upload up to <b><span id="bytes">{{ maxsize_bytes }} bytes</span></b> of data in as many files as you want.</p>
-<p>You have <b><span id="remaining">{{ remaining_sec }} seconds</span> left</b> until this link expires.</p>
+<p class="center">You can upload up to <b><span id="bytes">{{ maxsize_bytes }} bytes</span></b> of data in as many files as you want.</p>
+<p class="center">Link expires in <b><span id="remaining">{{ remaining_sec }} seconds</span></b>.</p>
 
 <div>
-    <hr>
-    <h3>File upload from browser</h3>
-    <p>Select files you want to upload (can be more than one)</p>
-    <input type="file" id="file" multiple/>
-    <p id="status">No files selected...</p>
+    <div class="bigbutton" onclick="document.getElementById('file').click()">️&#8594; Upload files &#8592;</div>
+    <input type="file" id="file" multiple style="display: none;"/>
+    <p class="center" id="status">No files selected...</p>
     <div id="overall" class="progressbar" style="display: none;"><div class="label">0/0</div><div class="bar"></div></div>
     <div id="single-file" class="progressbar" style="display: none;"><div class="label">0/0</div><div class="bar" /></div></div>
 </div>
 
 <div>
     <hr>
-    <h3>File upload with curl</h3>
+    <h3>Uploaded files</h3>
+    <ul id="uploaded-files">
+        <li>... nothing uploaded so far 😢</li>
+        {% for name in uploaded_files %}
+        <li>{{ name }}</li>
+        {% endfor %}
+    </ul>
+</div>
+
+<div>
+    <hr>
+    <h3>Upload with curl</h3>
+    <p>Do you like doing things from the command line? You can upload with the following command.</p>
     <pre>
 
 $ <code onclick="window.getSelection().selectAllChildren(this)">curl "{{ url }}" -T path/to/file/to/upload.ext</code>
@@ -25,17 +34,8 @@ $ <code onclick="window.getSelection().selectAllChildren(this)">curl "{{ url }}"
 </pre>
 </div>
 
-<div>
-    <hr>
-    <h3>Uploaded files</h3>
-    <ul id="uploaded-files">
-        {% for name in uploaded_files %}
-        <li>{{ name }}</li>
-        {% endfor %}
-    </ul>
-</div>
-
 <script>
     {% include "upload.js.j2" %}
 </script>
+
 {% endblock %}
