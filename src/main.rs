@@ -7,7 +7,11 @@ use async_std::{
 use data::Token;
 use rand_core::{OsRng, RngCore};
 use std::str;
-use tide::{utils::After, Request};
+use tide::{
+    log::{info, warn},
+    utils::After,
+    Request,
+};
 
 use clap::Parser;
 use serde_derive::Deserialize;
@@ -75,6 +79,24 @@ struct GenResTemplate<'a> {
     link: &'a str,
 }
 
+#[derive(Template)]
+#[template(path = "upload_response.txt.j2")]
+struct UploadResponseTemplate {
+    warn_content_length: bool,
+    warn_size_limit_reached: bool,
+    uploaded_bytes: u64,
+}
+
+impl UploadResponseTemplate {
+    fn new(len: bool, size_limit: bool, bytes: u64) -> Self {
+        Self {
+            warn_content_length: len,
+            warn_size_limit_reached: size_limit,
+            uploaded_bytes: bytes,
+        }
+    }
+}
+
 async fn async_main(args: Args) -> tide::Result<()> {
     tide::log::start();
 
@@ -83,7 +105,7 @@ async fn async_main(args: Args) -> tide::Result<()> {
     app.with(After(|mut res: tide::Response| async {
         if res.error().is_some() {
             let msg = match res.take_error() {
-                Some(msg) => format!("{}", msg),
+                Some(msg) => format!("{msg}"),
                 None => String::from("unknown error"),
             };
             res.set_body(msg);
@@ -129,8 +151,13 @@ async fn index(_req: Request<Context>) -> tide::Result {
     Ok(IndexTemplate {}.into())
 }
 
-async fn upload(req: Request<Context>) -> tide::Result {
+async fn upload(mut req: Request<Context>) -> tide::Result {
+    let body = req.take_body();
     let token = req.param("token")?;
+    let content_length = req
+        .header("Content-Length")
+        .map(|h| h.as_str().parse::<u64>().ok())
+        .unwrap_or(None);
     let temp_name = u64::to_string(&OsRng.next_u64());
     let name = req.param("name").unwrap_or(&temp_name);
     let tok = req
@@ -165,19 +192,36 @@ async fn upload(req: Request<Context>) -> tide::Result {
         .create_file_writer(name)
         .await
         .map_err(|err| tide::Error::from_str(403, err))?;
-    let bytes_written = copy(req.take(size_limit), file).await?;
 
-    /*info!("file written", {
-        bytes: bytes_written,
-        path: fs_path.canonicalize()?.to_str()
-    });*/
+    /* the take() function makes sure the upload does not overshoot the upload limit,
+    it can however result in truncated files 🤷*/
+    let bytes_written = copy(body.take(size_limit), file).await.map_err(|err| {
+        info!("wtf");
+        tide::Error::from(err)
+    })?;
 
-    let additional_msg = if tok.size_limit().await == 0 {
-        ", upload size limit exceeded (or reached exactly 0)"
+    /* we won't be notified, if the stream ends in the middle, it will just end normally on our side,
+    therefore, to check for completion, we use the Content-Length header */
+    let warn_content_lenght_missing = if let Some(expected) = content_length {
+        if expected == bytes_written {
+            // great, everything as expected
+            tok.mark_upload_final(name).await?;
+        } else {
+            warn!("upload of \"{name}\" not completed: expected={expected} real={bytes_written}");
+        }
+        false
     } else {
-        ""
+        warn!("upload of \"{name}\" did not contain Content-Length header, leaving it with partial name");
+        true
     };
-    Ok(format!("{} bytes uploaded{}\n", bytes_written, additional_msg).into())
+
+    /* return message that will be displayed to curl users */
+    Ok(UploadResponseTemplate::new(
+        warn_content_lenght_missing,
+        tok.size_limit().await == 0,
+        bytes_written,
+    )
+    .into())
 }
 
 async fn upload_help(req: Request<Context>) -> tide::Result {

@@ -94,18 +94,42 @@ impl Token {
 
     pub async fn create_file_writer(&self, name: &str) -> Result<File, String> {
         self.create_referenced_directory().await;
+
+        /* check for finished file name collision */
+        if Path::new(&self.get_final_file_name(name)).exists().await {
+            return Err("file already exists".to_owned());
+        }
+
+        /* create partial file writer */
         OpenOptions::new()
             .create_new(true)
             .write(true)
-            .open(format!("{}/{name}", self.d))
+            .open(self.get_partial_file_name(name))
             .await
             .map_err(|err| {
                 if err.raw_os_error().unwrap_or(0) == 17 {
                     "file already exists".to_owned()
                 } else {
-                    format!("error: {}", err)
+                    format!("error: {err}")
                 }
             })
+    }
+
+    fn get_partial_file_name(&self, name: &str) -> String {
+        // the idea is, that `name` cannot contain the $ character (it will be URL escaped)
+        format!("{}/{name}$.partial", self.d)
+    }
+
+    fn get_final_file_name(&self, name: &str) -> String {
+        format!("{}/{name}", self.d)
+    }
+
+    pub async fn mark_upload_final(&self, name: &str) -> std::io::Result<()> {
+        async_std::fs::rename(
+            self.get_partial_file_name(name),
+            self.get_final_file_name(name),
+        )
+        .await
     }
 }
 
