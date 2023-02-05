@@ -12,6 +12,8 @@ use std::str;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use log::warn;
+
 fn current_unix_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -94,18 +96,58 @@ impl Token {
 
     pub async fn create_file_writer(&self, name: &str) -> Result<File, String> {
         self.create_referenced_directory().await;
-        OpenOptions::new()
+
+        /* check for finished file name collision */
+        let final_name = self.get_final_file_name(name);
+        let final_path = Path::new(&final_name);
+        if final_path.exists().await {
+            return Err("file already exists".to_owned());
+        }
+
+        /* create partial file writer */
+        let result = OpenOptions::new()
             .create_new(true)
             .write(true)
-            .open(format!("{}/{name}", self.d))
+            .open(self.get_partial_file_name(name))
             .await
             .map_err(|err| {
                 if err.raw_os_error().unwrap_or(0) == 17 {
                     "file already exists".to_owned()
                 } else {
-                    format!("error: {}", err)
+                    format!("error: {err}")
                 }
-            })
+            });
+
+        /* we could have had a race condition here and someone could have uploaded a full file between
+        the two checks --> there could be both the partial and normal file in the filesystem at this moment */
+        if result.is_ok() && final_path.exists().await {
+            /* if both files exist, remove the newly created partial file as it's useless
+            note: the file is still opened when deleted, but that does not matter on Linux */
+            let r = async_std::fs::remove_file(self.get_partial_file_name(name)).await;
+            if let Err(e) = r {
+                warn!("failed to delete partial file after a race condition, manual cleanup necessary: {e}");
+            }
+            Err("file already exists".to_owned())
+        } else {
+            result
+        }
+    }
+
+    fn get_partial_file_name(&self, name: &str) -> String {
+        // the idea is, that `name` cannot contain the $ character (it will be URL escaped)
+        format!("{}/{name}$.partial", self.d)
+    }
+
+    fn get_final_file_name(&self, name: &str) -> String {
+        format!("{}/{name}", self.d)
+    }
+
+    pub async fn mark_upload_final(&self, name: &str) -> std::io::Result<()> {
+        async_std::fs::rename(
+            self.get_partial_file_name(name),
+            self.get_final_file_name(name),
+        )
+        .await
     }
 }
 
