@@ -19,3 +19,4 @@ base64 = "0.13.0"
 serde_derive = "1.0.140"
 rand = { version = "0.8.5", features = ["getrandom"] }
 rand_core = "0.6.3"
+log = { version = "0.4.17", features = ["std", "serde"] }

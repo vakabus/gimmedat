@@ -5,13 +5,10 @@ use async_std::{
     task,
 };
 use data::Token;
+use log::{info, warn};
 use rand_core::{OsRng, RngCore};
 use std::str;
-use tide::{
-    log::{info, warn},
-    utils::After,
-    Request,
-};
+use tide::{utils::After, Request};
 
 use clap::Parser;
 use serde_derive::Deserialize;
