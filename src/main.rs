@@ -58,10 +58,12 @@ impl Context {
 
 #[derive(Template)]
 #[template(path = "index.html.j2")]
-struct IndexTemplate {}
+struct IndexTemplate {
+    invalid_secret: bool,
+}
 
 #[derive(Template)]
-#[template(path = "upload_help.html.j2")]
+#[template(path = "upload.html.j2")]
 struct UploadHelpTemplate<'a> {
     remaining_sec: u64,
     maxsize_bytes: u64,
@@ -69,11 +71,28 @@ struct UploadHelpTemplate<'a> {
     uploaded_files: Vec<String>,
 }
 
-#[derive(Template)]
-#[template(path = "gen_res.html.j2")]
-struct GenResTemplate<'a> {
-    valid_secret: bool,
-    link: &'a str,
+impl<'a> UploadHelpTemplate<'a> {
+    async fn from(url: &'a str, token: Token) -> UploadHelpTemplate<'a> {
+        Self {
+            remaining_sec: if token.is_expired() {
+                0
+            } else {
+                token.remaining_time_secs()
+            },
+            maxsize_bytes: token.size_limit().await,
+            url,
+            uploaded_files: token
+                .file_names()
+                .await
+                .into_stream()
+                .map(|r| {
+                    r.map(|d| d.file_name().into_string().unwrap())
+                        .unwrap_or_else(|_| "ERROR".to_owned())
+                })
+                .collect()
+                .await,
+        }
+    }
 }
 
 #[derive(Template)]
@@ -132,20 +151,25 @@ struct GenQuery {
 async fn post_gen(mut req: Request<Context>) -> tide::Result {
     let body: GenQuery = req.body_form().await?;
     let crypt = CryptoState::new(&body.s);
-    let link = req
-        .state()
-        .create_link(&crypt.encrypt(&Token::new(body.n, body.m, body.t).to_string()));
+    let token = Token::new(body.n, body.m, body.t);
+    let link = req.state().create_link(&crypt.encrypt(&token.to_string()));
     let valid_secret = crypt == req.state().crypto;
 
-    Ok(GenResTemplate {
-        link: &link,
-        valid_secret,
+    if valid_secret {
+        Ok(tide::Redirect::new(link).into())
+    } else {
+        Ok(IndexTemplate {
+            invalid_secret: true,
+        }
+        .into())
     }
-    .into())
 }
 
 async fn index(_req: Request<Context>) -> tide::Result {
-    Ok(IndexTemplate {}.into())
+    Ok(IndexTemplate {
+        invalid_secret: false,
+    }
+    .into())
 }
 
 async fn upload(mut req: Request<Context>) -> tide::Result {
@@ -232,26 +256,7 @@ async fn upload_help(req: Request<Context>) -> tide::Result {
 
     let url = req.state().create_link(token);
     match tok {
-        Ok(query) => Ok(UploadHelpTemplate {
-            remaining_sec: if query.is_expired() {
-                0
-            } else {
-                query.remaining_time_secs()
-            },
-            maxsize_bytes: query.size_limit().await,
-            url: &url,
-            uploaded_files: query
-                .file_names()
-                .await
-                .into_stream()
-                .map(|r| {
-                    r.map(|d| d.file_name().into_string().unwrap())
-                        .unwrap_or_else(|_| "ERROR".to_owned())
-                })
-                .collect()
-                .await,
-        }
-        .into()),
+        Ok(query) => Ok(UploadHelpTemplate::from(url.as_str(), query).await.into()),
         Err(err) => Err(tide::Error::from_str(400, err)),
     }
 }

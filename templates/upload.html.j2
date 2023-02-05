@@ -1,6 +1,27 @@
 {% extends "layout.html.j2" %}
 {% block body %}
 
+<div style="display: none" id="share">
+    <p>Awesome, now you can send link to this page to anyone.</p>
+    <div style="width: 100%; display: flex; flex-direction: row; gap: 0.5rem;">
+        <input type="text" value="{{ url }}" id="input" style="flex-grow: 1;">
+        <button id="copy">Copy</button>
+        <script>
+            document.querySelector("#copy").onclick = function () {
+                document.querySelector("#input").select();
+                document.execCommand("copy");
+            };
+        </script>
+    </div>
+    <p>Note: These instructions will not be shown again.
+</div>
+<script>
+    if (window.localStorage['share']) {
+        window.localStorage.removeItem('share')
+        document.getElementById('share').style.display = "block"
+    }
+</script>
+
 <p class="center">You can upload up to <b><span id="bytes">{{ maxsize_bytes }} bytes</span></b> of data in as many files as you want.</p>
 <p class="center">Link expires in <b><span id="remaining">{{ remaining_sec }} seconds</span></b>.</p>
 
@@ -26,10 +47,10 @@
 <div>
     <hr>
     <h3>Upload with curl</h3>
-    <p>Do you like doing things from the command line? You can upload with the following command.</p>
+    <p>Do you like doing things from the command line? You can upload with the following command. Click on it to copy it.</p>
     <pre>
 
-$ <code onclick="window.getSelection().selectAllChildren(this)">curl "{{ url }}" -T path/to/file/to/upload.ext</code>
+$ <code onclick="window.getSelection().selectAllChildren(this); document.execCommand('copy');">curl "{{ url }}" -T path/to/file/to/upload.ext</code>
 
 </pre>
 </div>

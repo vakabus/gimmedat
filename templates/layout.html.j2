@@ -4,74 +4,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Gimmedat</title>
     <style>
-        body {
-            max-width: 40rem;
-            font-family: sans-serif;
-            margin-left: auto;
-            margin-right: auto;
-            font-size: 150%;
-        }
-        .progressbar > .bar {
-            background-color: rgba(120, 255, 138, 0.753);
-            width: 0%;
-            height: 100%;
-        }
-        .progressbar > .label {
-            width: 100%;
-            color: white;
-            text-align: center;
-            float: left;
-            line-height: 1.5em;
-        }
-        .progressbar {
-            margin-top: 0.5em;
-            background-color: lightgray;
-            width: 100%;
-            height: 1.5em;
-            border-radius: 0.2em;
-            overflow: hidden;
-        }
-
-        pre {
-            overflow-inline: auto;
-            background: lightgray;
-            border-radius: 0.2em;
-        }
-
-        .bigbutton {
-            padding: 1rem;
-            border-radius: 1rem;
-            background-color: #feb236;
-            cursor: pointer;
-            display: block;
-            text-align: center;
-            border-color: #FE9F03;
-            border-width: 0.3rem;
-            border-style: solid;
-            font-size: 2rem;
-            font-weight: 700;
-            margin: 0 auto;
-            width: fit-content;
-            box-shadow: 5px 5px;
-        }
-
-        .bigbutton:hover {
-            transform: translate(3px,3px);
-            background-color: #FE9F03;
-            box-shadow: 2px 2px;
-        }
-
-        p.center {
-            text-align: center;
-        }
-
-        #uploaded-files > li:first-child {
-            display: none;
-        }
-
-        #uploaded-files > li:only-of-type  {
-            display: initial !important;
-        }
+        {% include "style.css" %}
     </style>
 </head>
 <body>
