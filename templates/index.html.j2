@@ -1,13 +1,22 @@
 {% extends "layout.html.j2" %}
 {% block body %}
 <h1>Gimmedat</h1>
-<p>A personal tool for securly ingesting files from other people. With the right link, you can upload any data within the defined size limit.</p>
+<p>A personal tool for securely ingesting files from other people. With the right link, you can upload any data within the defined size limit.</p>
 <p>You should have received a link with a magic code that will allow you to upload files. In such case, access that link directly. If you want to generate a new link, use the form bellow.</p>
 <h2>Create a new upload link</h2>
-<form method="POST" action="/gen">
+<script>
+    function markAsFirstVisit() {
+        window.localStorage['share'] = "true";
+        return false;
+    }
+</script>
+<form method="POST" action="/gen" onsubmit="markAsFirstVisit()">
     <div>
         <label for="secret"> Secret </label>
         <input type="password" id="secret" name="s" placeholder="Secret">
+        {% if invalid_secret %}
+            <p style="color: red">Secret does not match!</p>
+        {% endif %}
     </div>
     <div>
         <label for="name"> Name </label>

@@ -1,41 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Gimmedat</title>
     <style>
-        body {
-            max-width: 40rem;
-            font-family: sans-serif;
-            margin-left: auto;
-            margin-right: auto;
-            font-size: 150%;
-        }
-        .progressbar > .bar {
-            background-color: rgba(120, 255, 138, 0.753);
-            width: 0%;
-            height: 100%;
-        }
-        .progressbar > .label {
-            width: 100%;
-            color: white;
-            text-align: center;
-            float: left;
-            line-height: 1.5em;
-        }
-        .progressbar {
-            margin-top: 0.5em;
-            background-color: lightgray;
-            width: 100%;
-            height: 1.5em;
-            border-radius: 0.2em;
-            overflow: hidden;
-        }
-
-        pre {
-            overflow-inline: auto;
-            background: lightgray;
-            border-radius: 0.2em;
-        }
+        {% include "style.css" %}
     </style>
 </head>
 <body>
