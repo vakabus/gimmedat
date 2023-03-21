@@ -29,6 +29,10 @@ struct Args {
     #[clap(short, long)]
     secret: String,
 
+    /// Allow unlimited uploads to 'public' directory on the root url
+    #[clap(long, action, default_value_t = false)]
+    public_access: bool,
+
     /// TCP port to listen on
     #[clap(short, long, default_value_t = 3000)]
     port: u16,
@@ -53,6 +57,10 @@ impl Context {
 
     fn create_link(&self, token: &str) -> String {
         format!("{}/{}/", self.base_url, token)
+    }
+
+    fn create_public_link(&self) -> String {
+        format!("{}/", self.base_url)
     }
 }
 
@@ -128,8 +136,13 @@ async fn async_main(args: Args) -> tide::Result<()> {
         }
         Ok(res)
     }));
-    app.at("/").get(index);
-    app.at("/gen").post(post_gen);
+    if args.public_access {
+        app.at("/").get(upload_help_public);
+        app.at("/:name").put(upload_public);
+    } else {
+        app.at("/").get(index);
+        app.at("/gen").post(post_gen);
+    }
     app.at("/:token/").put(upload).get(upload_help);
     app.at("/:token/:name").put(upload).get(upload_help);
     app.listen(("127.0.0.1", port)).await?;
@@ -148,11 +161,16 @@ struct GenQuery {
     t: u64,
 }
 
+fn token_to_link(ctx: &Context, tok: &Token) -> String {
+    ctx.create_link(&ctx.crypto.encrypt(&tok.to_string()))
+}
+
 async fn post_gen(mut req: Request<Context>) -> tide::Result {
     let body: GenQuery = req.body_form().await?;
-    let crypt = CryptoState::new(&body.s);
     let token = Token::new(body.n, body.m, body.t);
-    let link = req.state().create_link(&crypt.encrypt(&token.to_string()));
+    let link = token_to_link(&req.state(), &token);
+
+    let crypt = CryptoState::new(&body.s);
     let valid_secret = crypt == req.state().crypto;
 
     if valid_secret {
@@ -188,6 +206,15 @@ async fn upload(mut req: Request<Context>) -> tide::Result {
         .map_err(|err| tide::Error::from_str(401, err))?;
     let tok = Token::from_str(&tok).unwrap();
 
+    handle_upload(tok, name, body, content_length).await
+}
+
+async fn handle_upload(
+    tok: Token,
+    name: &str,
+    body: tide::Body,
+    content_length: Option<u64>,
+) -> tide::Result {
     if tok.is_expired() {
         return Err(tide::Error::from_str(403, "link expired"));
     }
@@ -199,7 +226,7 @@ async fn upload(mut req: Request<Context>) -> tide::Result {
     }
 
     let size_limit = tok.size_limit().await;
-    if req.len().unwrap_or(0) as u64 > size_limit {
+    if body.len().unwrap_or(0) as u64 > size_limit {
         return Err(tide::Error::from_str(400, "data size limit exceeded"));
     }
     if size_limit == 0 {
@@ -245,6 +272,23 @@ async fn upload(mut req: Request<Context>) -> tide::Result {
     .into())
 }
 
+fn public_token() -> Token {
+    Token::new("public".to_owned(), u64::MAX, u64::MAX / 2)
+}
+
+async fn upload_public(mut req: Request<Context>) -> tide::Result {
+    let body = req.take_body();
+    let content_length = req
+        .header("Content-Length")
+        .map(|h| h.as_str().parse::<u64>().ok())
+        .unwrap_or(None);
+    let temp_name = u64::to_string(&OsRng.next_u64());
+    let name = req.param("name").unwrap_or(&temp_name);
+    let tok = public_token();
+
+    handle_upload(tok, name, body, content_length).await
+}
+
 async fn upload_help(req: Request<Context>) -> tide::Result {
     let token = req.param("token")?;
     let query = req
@@ -259,6 +303,13 @@ async fn upload_help(req: Request<Context>) -> tide::Result {
         Ok(query) => Ok(UploadHelpTemplate::from(url.as_str(), query).await.into()),
         Err(err) => Err(tide::Error::from_str(400, err)),
     }
+}
+
+async fn upload_help_public(req: Request<Context>) -> tide::Result {
+    let url = req.state().create_public_link();
+    Ok(UploadHelpTemplate::from(url.as_str(), public_token())
+        .await
+        .into())
 }
 
 fn main() -> tide::Result<()> {

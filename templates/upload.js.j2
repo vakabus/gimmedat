@@ -10,7 +10,11 @@ function update_time_left() {
     const hours = ((seconds_remaining - days*3600*24) / 3600) | 0
     const minutes = ((seconds_remaining - days*3600*24 - hours*3600) / 60) | 0
     const seconds = ((seconds_remaining - days*3600*24 - hours*3600 - minutes*60)) | 0
-    rem.innerText = `${days}d ${hours}h ${minutes}m ${seconds}s`
+    if (days < 1000) {
+        rem.innerText = `${days}d ${hours}h ${minutes}m ${seconds}s`
+    } else {
+        rem.innerText = "the far future"
+    }
 
     // The format is something like "Tuesday, 13 December 2022 at 19:26:21 CET"
     rem.title = `Expires on ${new Date(Date.now() + seconds_remaining*1000).toLocaleString("en-GB", { dateStyle: 'full', timeStyle: 'long' })}`
