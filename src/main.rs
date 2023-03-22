@@ -29,9 +29,9 @@ struct Args {
     #[clap(short, long)]
     secret: String,
 
-    /// Allow unlimited uploads to 'public' directory on the root url
-    #[clap(long, action, default_value_t = false)]
-    public_access: bool,
+    /// Allow unlimited uploads to a given directory on the root url
+    #[clap(long)]
+    public_access: Option<String>,
 
     /// TCP port to listen on
     #[clap(short, long, default_value_t = 3000)]
@@ -45,13 +45,15 @@ struct Args {
 struct Context {
     crypto: CryptoState,
     base_url: String,
+    public_dir: Option<String>,
 }
 
 impl Context {
-    fn new(secret: &str, base_url: String) -> Self {
+    fn new(secret: &str, base_url: String, public_dir: Option<String>) -> Self {
         Context {
             crypto: CryptoState::new(secret),
             base_url,
+            public_dir,
         }
     }
 
@@ -61,6 +63,26 @@ impl Context {
 
     fn create_public_link(&self) -> String {
         format!("{}/", self.base_url)
+    }
+
+    fn public_access_enabled(&self) -> bool {
+        self.public_dir.is_some()
+    }
+
+    fn create_public_token(&self) -> Token {
+        let token = Token::new(
+            self.public_dir
+                .as_ref()
+                .expect("can't create public token when there is no public dir set")
+                .clone(),
+            u64::MAX,
+            u64::MAX / 2,
+        );
+
+        /* run validation */
+        _ = token.validate().expect("public token validation failed");
+
+        token
     }
 }
 
@@ -125,7 +147,11 @@ async fn async_main(args: Args) -> tide::Result<()> {
     tide::log::start();
 
     let port = args.port;
-    let mut app = tide::with_state(Context::new(&args.secret, args.base_url));
+    let mut app = tide::with_state(Context::new(
+        &args.secret,
+        args.base_url,
+        args.public_access,
+    ));
     app.with(After(|mut res: tide::Response| async {
         if res.error().is_some() {
             let msg = match res.take_error() {
@@ -136,7 +162,7 @@ async fn async_main(args: Args) -> tide::Result<()> {
         }
         Ok(res)
     }));
-    if args.public_access {
+    if app.state().public_access_enabled() {
         app.at("/").get(upload_help_public);
         app.at("/:name").put(upload_public);
     } else {
@@ -272,10 +298,6 @@ async fn handle_upload(
     .into())
 }
 
-fn public_token() -> Token {
-    Token::new("public".to_owned(), u64::MAX, u64::MAX / 2)
-}
-
 async fn upload_public(mut req: Request<Context>) -> tide::Result {
     let body = req.take_body();
     let content_length = req
@@ -284,7 +306,7 @@ async fn upload_public(mut req: Request<Context>) -> tide::Result {
         .unwrap_or(None);
     let temp_name = u64::to_string(&OsRng.next_u64());
     let name = req.param("name").unwrap_or(&temp_name);
-    let tok = public_token();
+    let tok = req.state().create_public_token();
 
     handle_upload(tok, name, body, content_length).await
 }
@@ -307,9 +329,11 @@ async fn upload_help(req: Request<Context>) -> tide::Result {
 
 async fn upload_help_public(req: Request<Context>) -> tide::Result {
     let url = req.state().create_public_link();
-    Ok(UploadHelpTemplate::from(url.as_str(), public_token())
-        .await
-        .into())
+    Ok(
+        UploadHelpTemplate::from(url.as_str(), req.state().create_public_token())
+            .await
+            .into(),
+    )
 }
 
 fn main() -> tide::Result<()> {
