@@ -1,6 +1,5 @@
-use chacha20poly1305::aead::Aead;
-use chacha20poly1305::aead::NewAead;
-use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
+use base64::{engine::general_purpose::URL_SAFE, Engine as _};
+use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 use rand::Rng;
 use rand_core::OsRng;
 
@@ -30,7 +29,7 @@ impl CryptoState {
     }
 
     pub fn decrypt(&self, s: &str) -> Result<String, String> {
-        let bytes = base64::decode_config(s, base64::URL_SAFE).map_err(|err| err.to_string())?;
+        let bytes = URL_SAFE.decode(s).map_err(|err| err.to_string())?;
         let nonce = Nonce::from_slice(&bytes[bytes.len() - 12..]);
         let ciphertext: &[u8] = &bytes[..bytes.len() - 12];
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
@@ -47,7 +46,7 @@ impl CryptoState {
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
         let mut ciphertext = cipher.encrypt(&nonce, plaintext.as_bytes()).unwrap();
         ciphertext.extend_from_slice(&nonce);
-        base64::encode_config(ciphertext, base64::URL_SAFE)
+        URL_SAFE.encode(ciphertext)
     }
 }
 
