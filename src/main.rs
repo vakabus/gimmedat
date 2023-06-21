@@ -37,6 +37,10 @@ struct Args {
     #[clap(short, long, default_value_t = 3000)]
     port: u16,
 
+    /// IP to listen on
+    #[clap(short, long, default_value = "127.0.0.1")]
+    listen_ip: String,
+
     #[clap(short, long, default_value = "http://localhost:3000")]
     base_url: String,
 }
@@ -80,7 +84,7 @@ impl Context {
         );
 
         /* run validation */
-        _ = token.validate().expect("public token validation failed");
+        token.validate().expect("public token validation failed");
 
         token
     }
@@ -171,7 +175,7 @@ async fn async_main(args: Args) -> tide::Result<()> {
     }
     app.at("/:token/").put(upload).get(upload_help);
     app.at("/:token/:name").put(upload).get(upload_help);
-    app.listen(("127.0.0.1", port)).await?;
+    app.listen((args.listen_ip, port)).await?;
     Ok(())
 }
 
@@ -194,7 +198,7 @@ fn token_to_link(ctx: &Context, tok: &Token) -> String {
 async fn post_gen(mut req: Request<Context>) -> tide::Result {
     let body: GenQuery = req.body_form().await?;
     let token = Token::new(body.n, body.m, body.t);
-    let link = token_to_link(&req.state(), &token);
+    let link = token_to_link(req.state(), &token);
 
     let crypt = CryptoState::new(&body.s);
     let valid_secret = crypt == req.state().crypto;
