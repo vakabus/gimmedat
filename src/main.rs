@@ -13,9 +13,6 @@ use tide::{utils::After, Request};
 use clap::Parser;
 use serde_derive::Deserialize;
 
-mod crypto;
-mod data;
-
 use async_std::io::copy;
 
 use crate::crypto::CryptoState;
