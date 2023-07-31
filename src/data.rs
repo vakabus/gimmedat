@@ -46,7 +46,9 @@ impl Token {
         let mut filenames = self.file_names().await;
         while let Some(res) = filenames.next().await {
             if let Ok(dir) = res {
-                size += dir.metadata().await.unwrap().size()
+                size += dir.metadata().await.unwrap().size(); // file content
+                size += dir.file_name().len() as u64; // length of the file name
+                size += 4096;  // constant overhead to account for metadata space of empty files
             }
         }
 
