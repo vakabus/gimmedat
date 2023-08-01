@@ -20,3 +20,4 @@ serde_derive = "1.0.164"
 rand = { version = "0.8.5", features = ["getrandom"] }
 rand_core = "0.6.3"
 log = { version = "0.4.17", features = ["std", "serde"] }
+anyhow = "1.0.72"
