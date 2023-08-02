@@ -3,8 +3,9 @@ use crate::data::{DirectoryRegistry, UploadCapability};
 use crate::templates::{IndexTemplate, UploadHelpTemplate, UploadResponseTemplate};
 use crate::Args;
 use async_std::io::copy;
-use log::{error, warn};
+use log::warn;
 use rand_core::{OsRng, RngCore};
+use std::error::Error;
 use std::str;
 use tide::{utils::After, Request};
 
@@ -151,12 +152,12 @@ async fn handle_upload(
     ctx: &Context,
 ) -> tide::Result {
     if cap.is_expired() {
-        return Err(tide::Error::from_str(403, "link expired"));
+        return Err(tide::Error::from_str(403, "link expired\n"));
     }
     if let Err(err) = cap.validate() {
         return Err(tide::Error::from_str(
             400,
-            format!("link data invalid: {err}"),
+            format!("link data invalid: {err}\n"),
         ));
     }
 
@@ -192,8 +193,12 @@ async fn handle_upload(
     /* process the uploaded data */
     let res = copy(body, &mut file).await; // we ignore errors, they are handled by the custom writer itself
     if let Err(e) = res {
-        error!("IO error: {e}");
-        msgs.push(format!("IO error while transferring the file: {e}"))
+        warn!("IO error: {:?}", e);
+        if let Some(err) = e.source() {
+            msgs.push(format!("IO error while transfering the file: {}", err));
+        } else {
+            msgs.push("IO error while transferring the file: unknown".to_owned());
+        }
     }
     let bytes_written = file.get_bytes_really_written();
 

@@ -19,6 +19,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Weak;
+use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -65,6 +66,11 @@ impl UploadCapability {
     }
     pub fn is_expired(&self) -> bool {
         self.t < current_unix_timestamp()
+    }
+
+    pub fn expiration_time(&self) -> SystemTime {
+        let dur = Duration::from_secs(self.t);
+        UNIX_EPOCH + dur
     }
 
     /// Works properly only when not expired
@@ -185,6 +191,7 @@ impl Directory {
             uc.size_limit(),
             filename,
             expected_size,
+            uc.expiration_time(),
         ))
     }
 
@@ -225,14 +232,21 @@ impl Directory {
 
 pub struct DirectoryFileWriter<'a> {
     dir: &'a Directory,
-    total_size: &'a AtomicU64,
     filename: &'a str,
     file: File,
-    max_dir_size: u64,
+
+    /* internal state variables */
     errored: bool,
-    expected_size: Option<u64>,
     finalized: bool,
+
+    /* helper values for enforcing the size limit */
+    total_size: &'a AtomicU64,
+    expected_size: Option<u64>,
     bytes_written: u64,
+
+    /* limits */
+    max_dir_size: u64,
+    expiration_time: SystemTime,
 }
 
 impl<'a> DirectoryFileWriter<'a> {
@@ -243,6 +257,7 @@ impl<'a> DirectoryFileWriter<'a> {
         max_dir_size: u64,
         filename: &'a str,
         expected_size: Option<u64>,
+        expiration_time: SystemTime,
     ) -> Self {
         Self {
             dir,
@@ -254,6 +269,7 @@ impl<'a> DirectoryFileWriter<'a> {
             expected_size,
             finalized: false,
             bytes_written: 0,
+            expiration_time,
         }
     }
 
@@ -310,12 +326,21 @@ impl<'a> async_std::io::Write for DirectoryFileWriter<'a> {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        /* check if we can accept the bytes */
+        /* check if the bytes fit into the size limit */
         if self.total_size.load(Ordering::Relaxed) > self.max_dir_size {
             self.get_mut().errored = true;
             return std::task::Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "data limit exceeded",
+            )));
+        }
+
+        /* check if it's not too late */
+        if SystemTime::now() > self.expiration_time {
+            self.get_mut().errored = true;
+            return std::task::Poll::Ready(Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "time limit expired",
             )));
         }
 
