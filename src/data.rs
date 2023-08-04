@@ -380,8 +380,12 @@ impl<'a> async_std::io::Write for DirectoryFileWriter<'a> {
         this.write_in_progress = true;
         let res = async_std::io::Write::poll_write(Pin::new(&mut this.file), cx, buf);
 
-        /* log the bytes written */
         if let std::task::Poll::Ready(Ok(size)) = &res {
+            /* this function does not necessarily write the whole buffer, so deallocate unused bytes */
+            this.total_size
+                .fetch_sub((buf.len() - size) as u64, Ordering::Relaxed);
+
+            /* update internal state */
             this.write_in_progress = false;
             this.bytes_written += *size as u64;
         };
