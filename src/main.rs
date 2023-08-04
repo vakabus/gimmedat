@@ -1,5 +1,5 @@
-use async_std::task;
 use clap::Parser;
+use tokio::runtime::Runtime;
 use web::start_webserver;
 
 mod crypto;
@@ -32,7 +32,14 @@ pub struct Args {
     base_url: String,
 }
 
-fn main() -> tide::Result<()> {
+fn main() -> anyhow::Result<()> {
+    /* configure tracing */
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
+
     let args = Args::parse();
-    task::block_on(start_webserver(args))
+
+    let rt = Runtime::new()?;
+    rt.block_on(start_webserver(args))
 }

@@ -7,17 +7,25 @@ edition = "2021"
 
 [dependencies]
 rust-argon2 = "1.0"
-askama = { version = "0.12", features = ["with-tide"] }
-askama_tide = "0.15"
+askama = { version = "0.12" }
 async-std = "1.12.0"
 chacha20poly1305 = "0.10"
 clap = { version = "4.3.5", features = ["derive"] }
 serde = "1.0.164"
-tide = "0.16.0"
 serde_urlencoded = "0.7.1"
 base64 = "0.21"
 serde_derive = "1.0.164"
 rand = { version = "0.8.5", features = ["getrandom"] }
 rand_core = "0.6.3"
-log = { version = "0.4.17", features = ["std", "serde"] }
 anyhow = "1.0.72"
+axum = { version = "0.6.20", features = ["headers", "tracing"] }
+askama_axum = "0.3.0"
+bytes = { version = "1.4.0", features = ["std"] }
+tokio = { version = "1.29.1", features = ["full"] }
+tracing-subscriber = "0.3.17"
+tracing = "0.1.37"
+tower-http = { version = "0.4.3", features = ["trace"] }
+axum-extra = "0.7.7"
+tower = "0.4.13"
+http-body = "0.4.5"
+nanoid = "0.4.0"

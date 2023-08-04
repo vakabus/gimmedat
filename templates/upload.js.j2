@@ -93,7 +93,7 @@ fileInput.onchange = async (event) => {
     let totalFiles = files.length;
     let totalSize = [...files].map(f => f.size).reduce((a,b) => a+b, 0)
     if (totalSize > INITIAL_MAX_SIZE_BYTES - uploaded_bytes) {
-        alert(`Cannot upload ${format_bytes(totalSize)} of data`)
+        alert(`This would exceed the data limit. ${format_bytes(totalSize)} is too much.`)
         return
     }
     let processedFiles = 0

@@ -1,9 +1,9 @@
 use async_std::fs::File;
 use async_std::fs::OpenOptions;
 use async_std::sync::Mutex;
-use log::error;
-use log::warn;
 use serde_derive::{Deserialize, Serialize};
+use tracing::error;
+use tracing::warn;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -61,9 +61,6 @@ impl UploadCapability {
         Ok(())
     }
 
-    pub fn from_str(source: &str) -> Result<Self, impl std::error::Error> {
-        serde_urlencoded::from_str(source)
-    }
     pub fn is_expired(&self) -> bool {
         self.t < current_unix_timestamp()
     }
@@ -89,18 +86,6 @@ impl UploadCapability {
 
     pub fn dir_name(&self) -> &str {
         &self.d
-    }
-}
-
-impl ToString for UploadCapability {
-    fn to_string(&self) -> String {
-        serde_urlencoded::to_string(self).unwrap()
-    }
-}
-
-impl From<UploadCapability> for String {
-    fn from(t: UploadCapability) -> Self {
-        t.to_string()
     }
 }
 
