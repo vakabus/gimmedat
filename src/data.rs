@@ -238,6 +238,7 @@ pub struct DirectoryFileWriter<'a> {
     /* internal state variables */
     errored: bool,
     finalized: bool,
+    write_in_progress: bool,
 
     /* helper values for enforcing the size limit */
     total_size: &'a AtomicU64,
@@ -265,6 +266,7 @@ impl<'a> DirectoryFileWriter<'a> {
             file,
             max_dir_size,
             errored: false,
+            write_in_progress: false,
             filename,
             expected_size,
             finalized: false,
@@ -299,7 +301,7 @@ impl<'a> DirectoryFileWriter<'a> {
         };
 
         /* warn about data limit exhaustion */
-        if u64::saturating_sub(self.max_dir_size, self.total_size.load(Ordering::Relaxed)) == 0 {
+        if self.max_dir_size <= self.total_size.load(Ordering::Relaxed) {
             msgs.push("data limit reached while uploading".to_owned());
         }
 
@@ -326,35 +328,62 @@ impl<'a> async_std::io::Write for DirectoryFileWriter<'a> {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        /* check if the bytes fit into the size limit */
-        if self.total_size.load(Ordering::Relaxed) > self.max_dir_size {
-            self.get_mut().errored = true;
-            return std::task::Poll::Ready(Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "data limit exceeded",
-            )));
+        let this = self.get_mut();
+
+        /* reserve the bytes (CAS loop)
+        - always Relaxed ordering, because we are working with just a single variable
+          and there is no other operation that could be reorderd incorrectly
+        - do this only once, before the actual write starts */
+        if !this.write_in_progress {
+            let mut current_value = this.total_size.load(Ordering::Relaxed);
+            let addition = buf.len() as u64;
+            loop {
+                /* every time we loop, check if the bytes fit into the limit */
+                if current_value + addition <= this.max_dir_size {
+                    /* if they do, try to allocate */
+                    match this.total_size.compare_exchange_weak(
+                        current_value,
+                        current_value + addition,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    ) {
+                        Ok(_) => {
+                            /* allocation sucessfull, continue with the actual write */
+                            break;
+                        }
+                        Err(real) => {
+                            /* allocation unsucessfull, try again */
+                            current_value = real;
+                        }
+                    }
+                } else {
+                    /* if the buffer does not fit, return error */
+                    this.errored = true;
+                    return std::task::Poll::Ready(Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "data limit exceeded",
+                    )));
+                }
+            }
         }
 
         /* check if it's not too late */
-        if SystemTime::now() > self.expiration_time {
-            self.get_mut().errored = true;
+        if SystemTime::now() > this.expiration_time {
+            this.errored = true;
             return std::task::Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "time limit expired",
             )));
         }
 
-        // get a reference for total size
-        let size_ref = self.total_size;
-
         /* write the bytes */
-        let slf = self.get_mut();
-        let res = async_std::io::Write::poll_write(Pin::new(&mut slf.file), cx, buf);
+        this.write_in_progress = true;
+        let res = async_std::io::Write::poll_write(Pin::new(&mut this.file), cx, buf);
 
         /* log the bytes written */
         if let std::task::Poll::Ready(Ok(size)) = &res {
-            size_ref.fetch_add(*size as u64, Ordering::Relaxed);
-            slf.bytes_written += *size as u64;
+            this.write_in_progress = false;
+            this.bytes_written += *size as u64;
         };
 
         res
