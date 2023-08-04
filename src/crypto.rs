@@ -42,7 +42,7 @@ impl CryptoState {
     }
 
     pub fn encrypt(&self, plaintext: &str) -> String {
-        let nonce = Nonce::from(OsRng::default().gen::<[u8; 12]>());
+        let nonce = Nonce::from(OsRng.gen::<[u8; 12]>());
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
         let mut ciphertext = cipher.encrypt(&nonce, plaintext.as_bytes()).unwrap();
         ciphertext.extend_from_slice(&nonce);
