@@ -78,8 +78,8 @@ pub async fn start_webserver(args: Args) -> tide::Result<()> {
         Ok(res)
     }));
     if app.state().public_access_enabled() {
-        app.at("/").get(upload_help_public);
-        app.at("/:name").put(upload_public);
+        app.at("/").put(upload_public).get(upload_help_public);
+        app.at("/:name").put(upload_public).get(upload_help_public);
     } else {
         app.at("/").get(index);
         app.at("/gen").post(post_gen);
