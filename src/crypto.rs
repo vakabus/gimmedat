@@ -2,7 +2,7 @@ use base64::{engine::general_purpose::URL_SAFE, Engine as _};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 use rand::Rng;
 use rand_core::OsRng;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 
 use std::str;
 
@@ -52,8 +52,7 @@ impl CryptoState {
 
     pub fn decrypt<T: DeserializeOwned>(&self, encrypted: String) -> Result<T, String> {
         let raw = self.decrypt_raw(&encrypted)?;
-        let res = serde_urlencoded::from_str(&raw).map_err(|e| e.to_string());
-        res
+        serde_urlencoded::from_str(&raw).map_err(|e| e.to_string())
     }
 
     fn encrypt_raw(&self, plaintext: &str) -> String {
