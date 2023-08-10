@@ -70,7 +70,15 @@ impl UploadCapability {
 
     pub fn expiration_time(&self) -> SystemTime {
         let dur = Duration::from_secs(self.t);
-        UNIX_EPOCH + dur
+        match UNIX_EPOCH.checked_add(dur) {
+            Some(exp_time) => exp_time,
+            None => {
+                // the link is valid for u64::MAX seconds and an overflow happens
+                // the following expression also results in a huge timestamp far away in the future,
+                // but it does not overflow
+                UNIX_EPOCH + Duration::MAX.div_f64(4.0)
+            }
+        }
     }
 
     /// Works properly only when not expired
