@@ -1,9 +1,10 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::{Html, IntoResponse, Redirect};
+use axum::response::{Html, IntoResponse, Redirect, ErrorResponse};
 use axum::Form;
 use axum_extra::extract::OptionalPath;
 use serde_derive::Deserialize;
+use tracing::warn;
 
 use crate::data::UploadCapability;
 use crate::templates::{IndexTemplate, UploadHelpTemplate};
@@ -45,7 +46,10 @@ pub async fn get_upload_help(
     Path(capability): Path<String>,
     OptionalPath(_name): OptionalPath<String>,
 ) -> axum::response::Result<impl IntoResponse> {
-    let cap = ctx.crypto.decrypt(capability)?;
+    let cap = ctx.crypto.decrypt(capability).map_err(|e| {
+        warn!("capability decryption error: {:?}", e);
+        ErrorResponse::from("decryption failure")
+    })?;
 
     Ok(Html(
         UploadHelpTemplate::from(

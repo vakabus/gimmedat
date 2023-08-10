@@ -1,8 +1,13 @@
+use anyhow::anyhow;
 use base64::{engine::general_purpose::URL_SAFE, Engine as _};
-use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
+use chacha20poly1305::{
+    aead::{Aead},
+    ChaCha20Poly1305, Key, KeyInit, Nonce,
+};
 use rand::Rng;
 use rand_core::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
+use tracing::warn;
 
 use std::str;
 
@@ -37,50 +42,51 @@ impl CryptoState {
         self.key == CryptoState::derive_key(other_secret)
     }
 
-    fn decrypt_raw(&self, s: &str) -> Result<String, String> {
-        let bytes = URL_SAFE.decode(s).map_err(|err| err.to_string())?;
+    fn decrypt_raw(&self, s: &str) -> anyhow::Result<Vec<u8>> {
+        let bytes = URL_SAFE.decode(s)?;
         let nonce = Nonce::from_slice(&bytes[bytes.len() - 12..]);
         let ciphertext: &[u8] = &bytes[..bytes.len() - 12];
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
-        let plaintext = cipher
-            .decrypt(nonce, ciphertext)
-            .map_err(|err| err.to_string())?;
-        str::from_utf8(&plaintext)
-            .map_err(|err| err.to_string())
-            .map(str::to_owned)
+        let res = cipher.decrypt(nonce, ciphertext).map_err(|e| {
+            warn!("decryption error: {:?}", e);
+            anyhow!(e)
+        })?;
+        Ok(res)
     }
 
-    pub fn decrypt<T: DeserializeOwned>(&self, encrypted: String) -> Result<T, String> {
-        let raw = self.decrypt_raw(&encrypted)?;
-        serde_urlencoded::from_str(&raw).map_err(|e| e.to_string())
+    pub fn decrypt<T: DeserializeOwned>(&self, encrypted: String) -> anyhow::Result<T> {
+        let v = self.decrypt_raw(&encrypted)?;
+        ciborium::from_reader::<T, &[u8]>(&v).map_err(anyhow::Error::from)
     }
 
-    fn encrypt_raw(&self, plaintext: &str) -> String {
+    fn encrypt_raw(&self, plaintext: &[u8]) -> String {
         let nonce = Nonce::from(OsRng.gen::<[u8; 12]>());
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
-        let mut ciphertext = cipher.encrypt(&nonce, plaintext.as_bytes()).unwrap();
+        let mut ciphertext = cipher.encrypt(&nonce, plaintext).unwrap();
         ciphertext.extend_from_slice(&nonce);
         URL_SAFE.encode(ciphertext)
     }
 
     pub fn encrypt<T: Serialize>(&self, o: T) -> String {
-        self.encrypt_raw(&serde_urlencoded::to_string(o).unwrap())
+        let mut v = vec![];
+        ciborium::into_writer(&o, &mut v).expect("serialization should never fail");
+        self.encrypt_raw(&v)
     }
 }
 
 #[test]
 fn test_reversability() {
     let c = CryptoState::new("secretkey");
-    const PLAIN: &str = "some text which is not really long but not short either";
-    let new_plain = c
-        .decrypt_raw(&c.encrypt_raw(PLAIN))
+    const PLAIN: &[u8] = b"some text which is not really long but not short either";
+    let encrypted = c.encrypt_raw(PLAIN);
+    let decrypted = c.decrypt_raw(&encrypted)
         .expect("failed decryption");
-    assert_eq!(PLAIN, new_plain);
+    assert_eq!(PLAIN, &decrypted);
 }
 
 #[test]
 fn test_encrypted_twice_with_different_results() {
     let c = CryptoState::new("secretkey");
-    const PLAIN: &str = "plaintext";
+    const PLAIN: &[u8] = b"plaintext";
     assert_ne!(c.encrypt_raw(PLAIN), c.encrypt_raw(PLAIN));
 }

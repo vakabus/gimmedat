@@ -12,7 +12,6 @@ async-std = "1.12.0"
 chacha20poly1305 = "0.10"
 clap = { version = "4.3.5", features = ["derive"] }
 serde = "1.0.164"
-serde_urlencoded = "0.7.1"
 base64 = "0.21"
 serde_derive = "1.0.164"
 rand = { version = "0.8.5", features = ["getrandom"] }
@@ -29,3 +28,4 @@ axum-extra = "0.7.7"
 tower = "0.4.13"
 http-body = "0.4.5"
 nanoid = "0.4.0"
+ciborium = "0.2.1"

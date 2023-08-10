@@ -20,7 +20,10 @@ pub async fn put_upload(
     body: BodyStream,
 ) -> axum::response::Result<impl IntoResponse> {
     let content_length = content_length.map(|c| c.0 .0);
-    let capability: UploadCapability = ctx.crypto.decrypt(capability)?;
+    let capability: UploadCapability = ctx.crypto.decrypt(capability).map_err(|e| {
+        warn!("capability decryption error: {:?}", e);
+        ErrorResponse::from("decryption failure")
+    })?;
 
     Ok(handle_upload(capability, name, body, content_length, ctx).await)
 }
@@ -111,7 +114,7 @@ pub async fn put_upload_public(
 ) -> axum::response::Result<impl IntoResponse> {
     let content_length = content_length.map(|c| c.0 .0);
     let name = name.unwrap_or_else(|| OsRng.next_u64().to_string());
-    let cap = ctx.crypto.decrypt(capability)?;
+    let cap = ctx.crypto.decrypt(capability).map_err(|e| { warn!("capability decryption error: {:?}", e); ErrorResponse::from("decryption failure") })?;
 
     Ok(handle_upload(cap, name, body, content_length, ctx).await)
 }

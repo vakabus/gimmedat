@@ -38,6 +38,10 @@ pub struct UploadCapability {
     s: u64,
     /// timeout (unix timestamp)
     t: u64,
+    /// owner of this capability is allowed to upload
+    dl: bool,
+    /// owner of this capability is allowed to download
+    ul: bool,
 }
 
 impl UploadCapability {
@@ -50,6 +54,8 @@ impl UploadCapability {
             d: dir_name,
             s: maxsize,
             t: current_unix_timestamp() + validity_duration,
+            ul: true, // FIXME
+            dl: true, // FIXME
         }
     }
 
