@@ -1,24 +1,21 @@
-use std::borrow::Cow;
-use std::os::unix::prelude::OsStrExt;
+use std::sync::Arc;
 
 use async_std::fs::{read_dir, DirEntry};
 use axum::body::StreamBody;
 use axum::extract::{Path, State};
-use axum::headers::{ContentDisposition, ContentLength, ContentType, Header, HeaderMapExt};
-use axum::http::{response::Response, StatusCode};
-use axum::http::{HeaderMap, HeaderValue};
+use axum::headers::{ContentLength, ContentType, HeaderMapExt};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{ErrorResponse, Html, IntoResponse, Redirect, Result};
-use axum::{Form, TypedHeader};
+use axum::Form;
 use axum_extra::extract::OptionalPath;
 use bytes::Bytes;
-use format_bytes::format_bytes;
 use futures_lite::StreamExt;
 use serde_derive::Deserialize;
 use tracing::log::warn;
 use urlencoding::encode;
 
-use crate::data::Capability;
-use crate::templates::{BrowseTemplate, IndexTemplate, UploadHelpTemplate, ErrorTemplate};
+use crate::data::{Capability, Directory};
+use crate::templates::{BrowseTemplate, ErrorTemplate, IndexTemplate, UploadHelpTemplate};
 
 use super::Context;
 
@@ -69,9 +66,11 @@ pub async fn get_upload_help(
 
 async fn prep_file_list(
     path: &async_std::path::Path,
-    ctx: &Box<Context>,
+    ctx: &Context,
     cap: &Capability,
+    dir: Arc<Directory>,
 ) -> Vec<crate::templates::File> {
+
     let entries: Vec<DirEntry> = read_dir(path)
         .await
         .unwrap()
@@ -94,7 +93,7 @@ async fn prep_file_list(
         files.push(crate::templates::File::new(
             metadata.is_file(),
             entry.file_name().to_string_lossy().into(),
-            link
+            link,
         ));
     }
     files.sort();
@@ -110,7 +109,11 @@ pub async fn get_browse(
 
     if cap.is_expired() {
         // FIXME the capability should not be possible to construct if it is invalid
-        return Ok((StatusCode::FORBIDDEN, ErrorTemplate::new("Unfortunately, the link expired!".to_owned())).into_response());
+        return Ok((
+            StatusCode::FORBIDDEN,
+            ErrorTemplate::new("Unfortunately, the link expired!".to_owned()),
+        )
+            .into_response());
     }
 
     /* get reffered file type */
@@ -134,7 +137,8 @@ async fn get_browse_dir(
 ) -> Result<impl IntoResponse, ErrorResponse> {
     /* list files */
     let files = if cap.can_list() {
-        Some(prep_file_list(cap.path(), &ctx, &cap).await)
+        let dir = ctx.get_directory_ref(&cap).await?;
+        Some(prep_file_list(cap.path(), &ctx, &cap, dir.clone()).await)
     } else {
         None
     };

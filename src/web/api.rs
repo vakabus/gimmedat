@@ -14,6 +14,7 @@ use crate::{data::Capability, templates::UploadResponseTemplate};
 
 use super::Context;
 
+#[axum::debug_handler]
 pub async fn put_upload(
     State(ctx): State<Box<Context>>,
     Path((token, name)): Path<(String, String)>,
@@ -47,11 +48,7 @@ async fn handle_upload(
     }
 
     /* get a target directory reference */
-    let directory = ctx
-        .dirs
-        .get(cap.dir_name())
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
+    let directory = ctx.get_directory_ref(&cap).await?;
 
     if content_length.unwrap_or(0) > directory.get_remaining_bytes(&cap) {
         return Err(ErrorResponse::from((
@@ -68,7 +65,7 @@ async fn handle_upload(
         Err(err) => {
             warn!("Error processing request: {}", err);
             return Err(ErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,  // FIXME this catches even legitimate errors with 500
+                StatusCode::INTERNAL_SERVER_ERROR, // FIXME this catches even legitimate errors with 500
                 format!("{err}"),
             )));
         }
@@ -110,8 +107,11 @@ pub async fn put_upload_public(
     content_length: Option<TypedHeader<ContentLength>>,
     body: BodyStream,
 ) -> axum::response::Result<impl IntoResponse> {
-    if ! ctx.is_open_access_enabled() {
-        return Err(ErrorResponse::from((StatusCode::FORBIDDEN, "Open access is not enabled!".to_owned())));
+    if !ctx.is_open_access_enabled() {
+        return Err(ErrorResponse::from((
+            StatusCode::FORBIDDEN,
+            "Open access is not enabled!".to_owned(),
+        )));
     }
 
     let content_length = content_length.map(|c| c.0 .0);

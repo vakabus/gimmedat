@@ -1,9 +1,6 @@
 use anyhow::anyhow;
 use base64::{engine::general_purpose::URL_SAFE, Engine as _};
-use chacha20poly1305::{
-    aead::{Aead},
-    ChaCha20Poly1305, Key, KeyInit, Nonce,
-};
+use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 use rand::Rng;
 use rand_core::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
@@ -79,8 +76,7 @@ fn test_reversability() {
     let c = CryptoState::new("secretkey");
     const PLAIN: &[u8] = b"some text which is not really long but not short either";
     let encrypted = c.encrypt_raw(PLAIN);
-    let decrypted = c.decrypt_raw(&encrypted)
-        .expect("failed decryption");
+    let decrypted = c.decrypt_raw(&encrypted).expect("failed decryption");
     assert_eq!(PLAIN, &decrypted);
 }
 

@@ -102,7 +102,7 @@ impl BrowseTemplate {
             files,
             maxsize_bytes: 0,
             remaining_sec: 0,
-            url: "placeholder".to_owned()
+            url: "placeholder".to_owned(),
         }
     }
 }

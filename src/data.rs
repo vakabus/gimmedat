@@ -1,8 +1,14 @@
-use askama_axum::IntoResponse;
+use async_std::fs::read_dir;
+use async_std::fs::DirBuilder;
+use async_std::fs::DirEntry;
 use async_std::fs::File;
 use async_std::fs::OpenOptions;
+use async_std::io;
+use async_std::path::Path;
+use async_std::path::PathBuf;
 use async_std::sync::Mutex;
-use axum::http::StatusCode;
+use futures_lite::Stream;
+use futures_lite::StreamExt;
 use serde_derive::{Deserialize, Serialize};
 use tracing::error;
 use tracing::warn;
@@ -11,11 +17,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::ffi::OsString;
-use std::fs::read_dir;
-use std::fs::DirBuilder;
 use std::os::unix::prelude::MetadataExt;
-use std::path::Path;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::str;
 use std::sync::atomic::AtomicU64;
@@ -34,7 +36,7 @@ fn current_unix_timestamp() -> u64 {
 }
 
 /// A struct representing a capability. Stored encrypted and signed in the URLs.
-/// 
+///
 /// The awful one letter naming makes the URL shorter
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Capability {
@@ -57,25 +59,15 @@ impl Capability {
         self.s
     }
 
-    pub fn new(dir_name: String, maxsize: u64, validity_duration: u64) -> Self {
-        Capability {
-            p: dir_name,
-            s: maxsize,
-            t: current_unix_timestamp() + validity_duration,
-            u: true, // FIXME
-            d: true, // FIXME
-            x: true, // FIXME
-        }
-    }
-
+    /// Construct a capability with full privileges
     pub fn root() -> Self {
         Capability {
             p: ".".to_owned(),
             s: u64::MAX,
             t: u64::MAX,
-            u: true, // FIXME
-            d: true, // FIXME
-            x: true, // FIXME
+            u: true,
+            d: true,
+            x: true,
         }
     }
 
@@ -110,20 +102,16 @@ impl Capability {
         self.t - current_unix_timestamp()
     }
 
-    pub fn dir_name(&self) -> &str {
-        &self.p
-    }
-
     pub fn path(&self) -> &async_std::path::Path {
         async_std::path::Path::new(&self.p)
     }
 
-    pub fn child(&self, name: &OsStr) -> Self { //FIXME better name
+    pub fn child(&self, name: &OsStr) -> Self {
+        //FIXME better name
         let mut new = self.clone();
         let newpath = new.path().join(name);
         new.p = newpath.to_string_lossy().into(); // FIXME this is wrong, the `p` field should probably be OsString or just a byte array
         new
-
     }
 
     pub fn can_list(&self) -> bool {
@@ -146,11 +134,11 @@ pub struct Directory {
 }
 
 impl Directory {
-    pub fn new(path: PathBuf) -> anyhow::Result<Self> {
-        Self::ensure_path_existence(&path);
+    pub async fn new(path: PathBuf) -> anyhow::Result<Self> {
+        Self::ensure_path_existence(&path).await;
 
-        let size = AtomicU64::new(Self::calculate_existing_data_size(&path)?);
-        let filenames = Mutex::new(Self::create_filename_set(&path)?);
+        let size = AtomicU64::new(Self::calculate_existing_data_size(&path).await?);
+        let filenames = Mutex::new(Self::create_filename_set(&path).await?);
 
         Ok(Self {
             path,
@@ -159,30 +147,67 @@ impl Directory {
         })
     }
 
-    fn ensure_path_existence(path: &Path) {
-        if !(path.exists() && path.is_dir()) {
+    async fn ensure_path_existence(path: &Path) {
+        if !(path.exists().await && path.is_dir().await) {
             DirBuilder::new()
                 .recursive(true)
                 .create(path)
+                .await
                 .expect("creating directory should never fail");
         }
     }
 
-    fn assert_path_existence(path: &Path) {
-        assert!(path.exists(), "Directory does not exist");
-        assert!(path.is_dir(), "Path is not a directory");
+    async fn assert_path_existence(path: &Path) {
+        assert!(path.exists().await, "Directory does not exist");
+        assert!(path.is_dir().await, "Path is not a directory");
     }
 
-    fn create_filename_set(path: &Path) -> anyhow::Result<HashSet<OsString>> {
-        Ok(read_dir(path)?.map(|e| e.unwrap().file_name()).collect())
+    async fn create_filename_set(path: &Path) -> anyhow::Result<HashSet<OsString>> {
+        Ok(read_dir(path)
+            .await?
+            .map(|e| e.unwrap().file_name())
+            .collect()
+            .await)
     }
 
-    fn calculate_existing_data_size(dir: &Path) -> anyhow::Result<u64> {
+    async fn calculate_existing_data_size(dir: &Path) -> anyhow::Result<u64> {
+        async fn extend<A>(
+            vec: &mut Vec<A>,
+            mut stream: Pin<Box<dyn Stream<Item = io::Result<A>> + Send>>,
+        ) -> io::Result<()> {
+            while let Some(val) = stream.next().await {
+                vec.push(val?);
+            }
+            Ok(())
+        }
+
         let mut size = 0u64;
-        for dir in read_dir(dir)?.flatten() {
-            size += dir.metadata().unwrap().size(); // file content
+        let mut stack: Vec<DirEntry> = vec![];
+        let mut count = 0;
+        extend(&mut stack, Box::pin(read_dir(dir).await?)).await?;
+
+        while let Some(dir) = stack.pop() {
+            // monitoring
+            count += 1;
+            if count == 1000 {
+                warn!("traversing huge directory with more than 1000 files");
+            }
+
+            // accounting
+            let metadata = dir.metadata().await.unwrap();
+            size += metadata.size(); // file content
             size += dir.file_name().len() as u64; // length of the file name
             size += 4096; // constant overhead to account for metadata space of empty files
+
+            // recurse into the directory
+            if metadata.is_dir() {
+                extend(&mut stack, Box::pin(read_dir(dir.path()).await?)).await?;
+            }
+        }
+
+        // monitoring
+        if count > 1000 {
+            warn!("the directory had {} children", count);
         }
 
         Ok(size)
@@ -194,7 +219,7 @@ impl Directory {
         filename: &'a str,
         expected_size: Option<u64>,
     ) -> Result<DirectoryFileWriter<'a>, String> {
-        Self::assert_path_existence(&self.path);
+        Self::assert_path_existence(&self.path).await;
         let partial_name = self.get_partial_file_name(filename);
 
         let filename_os = OsString::from(filename);
@@ -465,7 +490,7 @@ impl<'a> Drop for DirectoryFileWriter<'a> {
 
 #[derive(Clone)]
 pub struct DirectoryRegistry {
-    real_sizes: Arc<Mutex<HashMap<String, Weak<Directory>>>>,
+    real_sizes: Arc<Mutex<HashMap<PathBuf, Weak<Directory>>>>,
 }
 
 impl DirectoryRegistry {
@@ -475,7 +500,7 @@ impl DirectoryRegistry {
         }
     }
 
-    pub async fn get(&self, directory_name: &str) -> anyhow::Result<Arc<Directory>> {
+    pub async fn get(&self, directory_name: &Path) -> anyhow::Result<Arc<Directory>> {
         let mut lock = self.real_sizes.lock().await;
 
         let res = lock.get(directory_name);
@@ -485,7 +510,7 @@ impl DirectoryRegistry {
             }
         }
 
-        let dir = Directory::new(PathBuf::from(directory_name))?;
+        let dir = Directory::new(PathBuf::from(directory_name)).await?;
         let res = Arc::new(dir);
         lock.insert(directory_name.to_owned(), Arc::<Directory>::downgrade(&res));
         Ok(res)

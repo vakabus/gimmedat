@@ -61,7 +61,7 @@ impl Context {
         cap: &Capability,
     ) -> axum::response::Result<Arc<Directory>> {
         self.dirs
-            .get(cap.dir_name())
+            .get(cap.path())
             .await
             .map_err(|e| ErrorResponse::from((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))
     }

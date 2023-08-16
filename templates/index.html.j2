@@ -1,0 +1,30 @@
+{% extends "layout.html.j2" %}
+
+{% block header %}
+<h1>Gimmedat</h1>
+<p>A personal tool for securely sharing files with other people. Securely upload or download any files with the configured limitations and safeguards.</p>
+{% endblock %}
+
+
+{% block body %}
+<script>
+    function markAsFirstVisit() {
+        window.localStorage['share'] = "true";
+        return false;
+    }
+</script>
+<section>
+    <form method="POST" action="/gen" onsubmit="markAsFirstVisit()">
+        <header><h2>Authentication required</h2></header>
+
+        <label for="secret">Secret</label>
+        <input type="password" name="secret" id="secret" required style="width: calc(100% - 1.6rem)"/> <!-- The same style is defined for input[type="text"], but not for type password -->
+
+        <button type="submit">Browse files</button>
+        
+        {% if invalid_secret %}
+            <p style="color: red">Secret does not match!</p>
+        {% endif %}
+    </form>
+</section>
+{% endblock %}
