@@ -14,7 +14,6 @@ use tracing::error;
 use tracing::warn;
 
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::os::unix::prelude::MetadataExt;
@@ -127,10 +126,16 @@ impl Capability {
     }
 }
 
+#[derive(PartialEq, Eq, Hash, Clone)]
+pub enum FileRef {
+    File,
+    Dir,
+}
+
 pub struct Directory {
     path: PathBuf,
     real_size: AtomicU64,
-    filenames: Mutex<HashSet<OsString>>,
+    filenames: Mutex<HashMap<OsString, FileRef>>,
 }
 
 impl Directory {
@@ -138,7 +143,7 @@ impl Directory {
         Self::ensure_path_existence(&path).await;
 
         let size = AtomicU64::new(Self::calculate_existing_data_size(&path).await?);
-        let filenames = Mutex::new(Self::create_filename_set(&path).await?);
+        let filenames = Mutex::new(Self::create_fileref_set(&path).await);
 
         Ok(Self {
             path,
@@ -162,12 +167,27 @@ impl Directory {
         assert!(path.is_dir().await, "Path is not a directory");
     }
 
-    async fn create_filename_set(path: &Path) -> anyhow::Result<HashSet<OsString>> {
-        Ok(read_dir(path)
-            .await?
-            .map(|e| e.unwrap().file_name())
-            .collect()
-            .await)
+    async fn create_fileref_set(path: &Path) -> HashMap<OsString, FileRef> {
+        let entries: Vec<DirEntry> = read_dir(path)
+            .await
+            .unwrap()
+            .collect::<Vec<std::io::Result<DirEntry>>>()
+            .await
+            .into_iter()
+            .map(|v| v.unwrap())
+            .collect();
+
+        let mut files = HashMap::with_capacity(entries.len());
+        for entry in entries {
+            let metadata = entry.metadata().await.unwrap();
+
+            if metadata.is_dir() {
+                files.insert(entry.file_name(), FileRef::Dir);
+            } else {
+                files.insert(entry.file_name(), FileRef::File);
+            }
+        }
+        files
     }
 
     async fn calculate_existing_data_size(dir: &Path) -> anyhow::Result<u64> {
@@ -228,10 +248,10 @@ impl Directory {
         {
             /* check for finished file name collision & claim it if it's free */
             let mut names = self.filenames.lock().await;
-            if names.contains(&filename_os) {
+            if names.contains_key(&filename_os) {
                 return Err("file already exists\n".to_owned());
             }
-            names.insert(filename_os);
+            names.insert(filename_os, FileRef::File);
         }
 
         /* there is still a possibility that a partial file exists, however we can
@@ -292,7 +312,7 @@ impl Directory {
         .await
     }
 
-    pub async fn list_files(&self) -> Vec<OsString> {
+    pub async fn list_files(&self) -> Vec<(OsString, FileRef)> {
         let names = self.filenames.lock().await;
         names.clone().into_iter().collect()
     }

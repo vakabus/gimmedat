@@ -1,7 +1,7 @@
 const INITIAL_REMAINING_SEC = {{ remaining_sec }}
 const LOAD_TIME = Date.now()
-const INITIAL_MAX_SIZE_BYTES = {{ maxsize_bytes }}
-let uploaded_bytes = 0
+const MAX_SIZE_BYTES = {{ maxsize_bytes }}
+let uploaded_bytes = {{ current_bytes }}
 
 function update_time_left() {
     let rem = document.getElementById("remaining")
@@ -35,7 +35,7 @@ function format_bytes(bytes) {
 
 function update_bytes_left() {
     let bts = document.getElementById("bytes")
-    bts.innerText = format_bytes(INITIAL_MAX_SIZE_BYTES - uploaded_bytes)
+    bts.innerText = format_bytes(MAX_SIZE_BYTES - uploaded_bytes)
 }
 
 
@@ -92,7 +92,7 @@ fileInput.onchange = async (event) => {
     let files = fileInput.files
     let totalFiles = files.length;
     let totalSize = [...files].map(f => f.size).reduce((a,b) => a+b, 0)
-    if (totalSize > INITIAL_MAX_SIZE_BYTES - uploaded_bytes) {
+    if (totalSize > MAX_SIZE_BYTES - uploaded_bytes) {
         alert(`This would exceed the data limit. ${format_bytes(totalSize)} is too much.`)
         return
     }

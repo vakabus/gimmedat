@@ -48,3 +48,9 @@
     border-radius: 0.2em;
     overflow: hidden;
 }
+
+.code-scroll {
+    overflow-x: scroll;
+    white-space: nowrap;
+    max-width: calc(100% - 1.6rem);
+}

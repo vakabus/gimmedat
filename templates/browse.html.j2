@@ -5,8 +5,9 @@
 <div>
     <section>
         <aside>
-            <h2>Limits</h2>
+            <h2>Resources</h2>
             <ul>
+                <li>currently using {{ current_bytes }} bytes</li>
                 <li><b><span id="bytes">{{ maxsize_bytes }} bytes</span></b></li>
                 <li><b><span id="remaining">{{ remaining_sec }} seconds</span></b></li>
             </ul>
@@ -20,8 +21,8 @@
         </aside>
         <aside>
             <h2>Upload with curl</h2>
-            <p>Click to copy:</p>
-            <code onclick="window.getSelection().selectAllChildren(this); document.execCommand('copy');">curl "{{ url }}" -T path/to/file/to/upload.ext</code>
+            <p>Click to copy the command template:</p>
+            <code class="code-scroll" onclick="window.getSelection().selectAllChildren(this); document.execCommand('copy');">curl "{{ url }}" -T path/to/file/to/upload.ext</code>
         </aside>
     </section>
 

@@ -1,8 +1,9 @@
-use std::sync::Arc;
-
 use askama::Template;
 
-use crate::data::{Capability, Directory};
+use crate::{
+    data::{Capability, Directory},
+    web::Context,
+};
 
 #[derive(Template)]
 #[template(path = "index.html.j2")]
@@ -13,42 +14,6 @@ pub struct IndexTemplate {
 impl IndexTemplate {
     pub fn new(invalid_secret: bool) -> Self {
         Self { invalid_secret }
-    }
-}
-
-#[derive(Template)]
-#[template(path = "upload.html.j2")]
-pub struct UploadHelpTemplate<'a> {
-    remaining_sec: u64,
-    maxsize_bytes: u64,
-    url: &'a str,
-    uploaded_files: Vec<String>,
-}
-
-impl<'a> UploadHelpTemplate<'a> {
-    pub async fn from(
-        url: &'a str,
-        cap: &'a Capability,
-        dir: Arc<Directory>,
-    ) -> UploadHelpTemplate<'a> {
-        Self {
-            remaining_sec: if cap.is_expired() {
-                0
-            } else {
-                cap.remaining_time_secs()
-            },
-            maxsize_bytes: dir.get_remaining_bytes(cap),
-            url,
-            uploaded_files: dir
-                .list_files()
-                .await
-                .into_iter()
-                .map(|r| {
-                    r.into_string()
-                        .unwrap_or("INVALID UTF8 FILENAME".to_owned())
-                })
-                .collect(),
-        }
     }
 }
 
@@ -90,19 +55,21 @@ impl File {
 pub struct BrowseTemplate {
     can_upload: bool,
     files: Option<Vec<File>>,
+    current_bytes: u64,
     maxsize_bytes: u64,
     remaining_sec: u64,
     url: String,
 }
 
 impl BrowseTemplate {
-    pub fn new(cap: Capability, files: Option<Vec<File>>) -> Self {
+    pub fn new(cap: Capability, ctx: &Context, dir: &Directory, files: Option<Vec<File>>) -> Self {
         Self {
             can_upload: cap.can_write(),
             files,
-            maxsize_bytes: 0,
-            remaining_sec: 0,
-            url: "placeholder".to_owned(),
+            current_bytes: dir.get_total_bytes(),
+            maxsize_bytes: cap.size_limit(),
+            remaining_sec: cap.remaining_time_secs(),
+            url: ctx.create_absolute_link(&cap),
         }
     }
 }

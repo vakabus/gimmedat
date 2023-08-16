@@ -1,21 +1,16 @@
-use std::sync::Arc;
-
-use async_std::fs::{read_dir, DirEntry};
 use axum::body::StreamBody;
 use axum::extract::{Path, State};
 use axum::headers::{ContentLength, ContentType, HeaderMapExt};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use axum::response::{ErrorResponse, Html, IntoResponse, Redirect, Result};
+use axum::response::{ErrorResponse, IntoResponse, Redirect, Result};
 use axum::Form;
-use axum_extra::extract::OptionalPath;
 use bytes::Bytes;
-use futures_lite::StreamExt;
 use serde_derive::Deserialize;
 use tracing::log::warn;
 use urlencoding::encode;
 
-use crate::data::{Capability, Directory};
-use crate::templates::{BrowseTemplate, ErrorTemplate, IndexTemplate, UploadHelpTemplate};
+use crate::data::{Capability, Directory, FileRef};
+use crate::templates::{BrowseTemplate, ErrorTemplate, IndexTemplate};
 
 use super::Context;
 
@@ -44,60 +39,6 @@ pub async fn get_index(State(ctx): State<Box<Context>>) -> impl IntoResponse {
     } else {
         IndexTemplate::new(false).into_response()
     }
-}
-
-pub async fn get_upload_help(
-    State(ctx): State<Box<Context>>,
-    Path(capability): Path<String>,
-    OptionalPath(_name): OptionalPath<String>,
-) -> axum::response::Result<impl IntoResponse> {
-    let cap = ctx.parse_capability(capability)?;
-
-    Ok(Html(
-        UploadHelpTemplate::from(
-            &ctx.create_absolute_link(&cap),
-            &cap,
-            ctx.get_directory_ref(&cap).await?,
-        )
-        .await
-        .to_string(),
-    ))
-}
-
-async fn prep_file_list(
-    path: &async_std::path::Path,
-    ctx: &Context,
-    cap: &Capability,
-    dir: Arc<Directory>,
-) -> Vec<crate::templates::File> {
-
-    let entries: Vec<DirEntry> = read_dir(path)
-        .await
-        .unwrap()
-        .collect::<Vec<std::io::Result<DirEntry>>>()
-        .await
-        .into_iter()
-        .map(|v| v.unwrap())
-        .collect();
-    let mut files = vec![];
-    for entry in entries {
-        let metadata = entry.metadata().await.unwrap();
-
-        // add subcapabilities only if reading is disabled
-        let link = if cap.can_read() {
-            Some(ctx.create_relative_link(&cap.child(&entry.file_name())))
-        } else {
-            None
-        };
-
-        files.push(crate::templates::File::new(
-            metadata.is_file(),
-            entry.file_name().to_string_lossy().into(),
-            link,
-        ));
-    }
-    files.sort();
-    files
 }
 
 pub async fn get_browse(
@@ -136,14 +77,36 @@ async fn get_browse_dir(
     ctx: Box<Context>,
 ) -> Result<impl IntoResponse, ErrorResponse> {
     /* list files */
+    let dir = ctx.get_directory_ref(&cap).await?;
     let files = if cap.can_list() {
-        let dir = ctx.get_directory_ref(&cap).await?;
-        Some(prep_file_list(cap.path(), &ctx, &cap, dir.clone()).await)
+        Some(prep_file_list(&cap, &ctx, &dir).await)
     } else {
         None
     };
 
-    Ok(Box::new(BrowseTemplate::new(cap, files)).into_response())
+    Ok(Box::new(BrowseTemplate::new(cap, &ctx, &dir, files)).into_response())
+}
+
+async fn prep_file_list(
+    cap: &Capability,
+    ctx: &Context,
+    dir: &Directory,
+) -> Vec<crate::templates::File> {
+    let mut res: Vec<crate::templates::File> = dir
+        .list_files()
+        .await
+        .into_iter()
+        .map(|(n, r)| {
+            let link = if cap.can_read() {
+                Some(ctx.create_relative_link(&cap.child(&n)))
+            } else {
+                None
+            };
+            crate::templates::File::new(r == FileRef::File, n.to_string_lossy().into(), link)
+        })
+        .collect();
+    res.sort();
+    res
 }
 
 async fn get_browse_file(cap: Capability, _ctx: Box<Context>) -> Result<impl IntoResponse> {

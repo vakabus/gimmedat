@@ -38,11 +38,11 @@ impl Context {
         }
     }
 
-    fn create_absolute_link(&self, cap: &Capability) -> String {
+    pub fn create_absolute_link(&self, cap: &Capability) -> String {
         format!("{}/c/{}/", self.base_url, &self.crypto.encrypt(cap))
     }
 
-    fn create_relative_link(&self, cap: &Capability) -> String {
+    pub fn create_relative_link(&self, cap: &Capability) -> String {
         format!("/c/{}/", &self.crypto.encrypt(cap))
     }
 
@@ -103,10 +103,7 @@ pub async fn start_webserver(args: Args) -> anyhow::Result<()> {
         .route("/:name", put(api::put_upload_public))
         .route("/gen", post(ui::post_auth))
         .route("/c/:capability/", put(api::put_upload).get(ui::get_browse))
-        .route(
-            "/c/:capability/:name",
-            put(api::put_upload).get(ui::get_upload_help),
-        )
+        .route("/c/:capability/:name", put(api::put_upload))
         .layer(tracer);
     let app = app.with_state(Box::new(Context::new(
         &args.secret,
