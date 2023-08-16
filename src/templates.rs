@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use askama::Template;
 
-use crate::data::{Directory, UploadCapability};
+use crate::data::{Capability, Directory};
 
 #[derive(Template)]
 #[template(path = "index.html.j2")]
@@ -28,7 +28,7 @@ pub struct UploadHelpTemplate<'a> {
 impl<'a> UploadHelpTemplate<'a> {
     pub async fn from(
         url: &'a str,
-        cap: &'a UploadCapability,
+        cap: &'a Capability,
         dir: Arc<Directory>,
     ) -> UploadHelpTemplate<'a> {
         Self {
@@ -65,5 +65,40 @@ impl UploadResponseTemplate {
             uploaded_bytes: bytes,
             msgs,
         }
+    }
+}
+
+pub struct File {
+    name: String,
+    link: Option<String>,
+}
+
+impl File {
+    pub fn new(name: String, link: Option<String>) -> Self {
+        Self { name, link }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "browse.html.j2")]
+pub struct BrowseTemplate {
+    files: Option<Vec<File>>,
+}
+
+impl BrowseTemplate {
+    pub fn new(files: Option<Vec<File>>) -> Self {
+        Self { files }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "error.html.j2")]
+pub struct ErrorTemplate {
+    error: String,
+}
+
+impl ErrorTemplate {
+    pub fn new(error: String) -> Self {
+        Self { error }
     }
 }

@@ -7,6 +7,7 @@ use tracing::warn;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fs::read_dir;
 use std::fs::DirBuilder;
@@ -30,37 +31,43 @@ fn current_unix_timestamp() -> u64 {
         .as_secs()
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-pub struct UploadCapability {
-    /// dir name where to store the data
-    d: String,
+/// A struct representing a capability. Stored encrypted and signed in the URLs.
+/// 
+/// The awful one letter naming makes the URL shorter
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Capability {
+    /// path name
+    p: String,
     /// size limit in bytes
     s: u64,
     /// timeout (unix timestamp)
     t: u64,
-    /// owner of this capability is allowed to upload
-    dl: bool,
-    /// owner of this capability is allowed to download
-    ul: bool,
+    /// owner of this capability is allowed to upload files
+    d: bool,
+    /// owner of this capability is allowed to download files
+    u: bool,
+    /// owner of this capability is allowed to list directories
+    x: bool,
 }
 
-impl UploadCapability {
+impl Capability {
     pub fn size_limit(&self) -> u64 {
         self.s
     }
 
     pub fn new(dir_name: String, maxsize: u64, validity_duration: u64) -> Self {
-        UploadCapability {
-            d: dir_name,
+        Capability {
+            p: dir_name,
             s: maxsize,
             t: current_unix_timestamp() + validity_duration,
-            ul: true, // FIXME
-            dl: true, // FIXME
+            u: true, // FIXME
+            d: true, // FIXME
+            x: true, // FIXME
         }
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.d.contains('/') {
+        if self.p.contains('/') {
             return Err("the given path contains invalid characters");
         }
 
@@ -91,7 +98,31 @@ impl UploadCapability {
     }
 
     pub fn dir_name(&self) -> &str {
-        &self.d
+        &self.p
+    }
+
+    pub fn path(&self) -> &async_std::path::Path {
+        async_std::path::Path::new(&self.p)
+    }
+
+    pub fn child(&self, name: &OsStr) -> Self { //FIXME better name
+        let mut new = self.clone();
+        let newpath = new.path().join(name);
+        new.p = newpath.to_string_lossy().into(); // FIXME this is wrong, the `p` field should probably be OsString or just a byte array
+        new
+
+    }
+
+    pub fn can_list(&self) -> bool {
+        self.x
+    }
+
+    pub fn can_read(&self) -> bool {
+        self.d
+    }
+
+    pub fn can_write(&self) -> bool {
+        self.u
     }
 }
 
@@ -146,7 +177,7 @@ impl Directory {
 
     pub async fn create_file_writer<'a>(
         &'a self,
-        uc: &UploadCapability,
+        uc: &Capability,
         filename: &'a str,
         expected_size: Option<u64>,
     ) -> Result<DirectoryFileWriter<'a>, String> {
@@ -202,7 +233,7 @@ impl Directory {
         self.real_size.load(Ordering::Relaxed)
     }
 
-    pub fn get_remaining_bytes(&self, uc: &UploadCapability) -> u64 {
+    pub fn get_remaining_bytes(&self, uc: &Capability) -> u64 {
         u64::saturating_sub(uc.size_limit(), self.get_total_bytes())
     }
 

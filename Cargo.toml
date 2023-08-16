@@ -29,3 +29,8 @@ tower = "0.4.13"
 http-body = "0.4.5"
 nanoid = "0.4.0"
 ciborium = "0.2.1"
+async-trait = "0.1.73"
+futures-lite = "1.13.0"
+tokio-util = { version = "0.7.8", features = ["io"] }
+format-bytes = "0.3.0"
+urlencoding = "2.1.3"

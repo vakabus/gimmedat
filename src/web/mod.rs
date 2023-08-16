@@ -1,18 +1,19 @@
+use axum::response::{Result, ErrorResponse};
 use nanoid::nanoid;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use crate::crypto::CryptoState;
-use crate::data::{DirectoryRegistry, UploadCapability};
+use crate::data::{DirectoryRegistry, Capability};
 use crate::Args;
 use axum::body::Body;
-use axum::http::{Request, Response};
+use axum::http::{Request, Response, StatusCode};
 use axum::routing::{get, post, put};
 use axum::Router;
 use http_body::combinators::UnsyncBoxBody;
 
 use tower_http::trace::TraceLayer;
-use tracing::{field, info, warn, Span};
+use tracing::{field, info, Span, error};
 
 mod api;
 mod ui;
@@ -35,8 +36,12 @@ impl Context {
         }
     }
 
-    fn create_upload_link(&self, cap: &UploadCapability) -> String {
+    fn create_upload_link(&self, cap: &Capability) -> String {
         format!("{}/{}/", self.base_url, &self.crypto.encrypt(cap))
+    }
+
+    fn create_relative_link(&self, cap: &Capability) -> String {
+        format!("/{}/", &self.crypto.encrypt(cap))
     }
 
     fn create_public_link(&self) -> String {
@@ -47,8 +52,8 @@ impl Context {
         self.public_dir.is_some()
     }
 
-    fn create_public_capability(&self) -> UploadCapability {
-        let token = UploadCapability::new(
+    fn create_public_capability(&self) -> Capability {
+        let token = Capability::new(
             self.public_dir
                 .as_ref()
                 .expect("can't create public token when there is no public dir set")
@@ -61,6 +66,12 @@ impl Context {
         token.validate().expect("public token validation failed");
 
         token
+    }
+
+    pub fn parse_capability(&self, token: String) -> Result<Capability> {
+        self.crypto.decrypt(token).map_err(|_| {
+            ErrorResponse::from((StatusCode::BAD_REQUEST, "invalid capability"))
+        })
     }
 }
 
@@ -81,13 +92,13 @@ pub async fn start_webserver(args: Args) -> anyhow::Result<()> {
             |response: &Response<UnsyncBoxBody<axum::body::Bytes, axum::Error>>,
              latency: Duration,
              _span: &Span| {
-                if response.status().is_success() {
-                    info!(
+                if response.status().is_server_error() {
+                    error!(
                         status = display(response.status()),
                         duration = debug(latency),
                     );
                 } else {
-                    warn!(
+                    info!(
                         status = display(response.status()),
                         duration = debug(latency),
                     );
@@ -100,7 +111,7 @@ pub async fn start_webserver(args: Args) -> anyhow::Result<()> {
         .route("/gen", post(ui::post_generate_link))
         .route(
             "/:capability/",
-            put(api::put_upload).get(ui::get_upload_help),
+            put(api::put_upload).get(ui::get_browse),
         )
         .route(
             "/:capability/:name",

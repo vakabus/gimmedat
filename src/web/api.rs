@@ -9,27 +9,24 @@ use axum::{
 use rand_core::{OsRng, RngCore};
 use tracing::{info, warn};
 
-use crate::{data::UploadCapability, templates::UploadResponseTemplate};
+use crate::{data::Capability, templates::UploadResponseTemplate};
 
 use super::Context;
 
 pub async fn put_upload(
     State(ctx): State<Box<Context>>,
-    Path((capability, name)): Path<(String, String)>,
+    Path((token, name)): Path<(String, String)>,
     content_length: Option<TypedHeader<ContentLength>>,
     body: BodyStream,
 ) -> axum::response::Result<impl IntoResponse> {
     let content_length = content_length.map(|c| c.0 .0);
-    let capability: UploadCapability = ctx.crypto.decrypt(capability).map_err(|e| {
-        warn!("capability decryption error: {:?}", e);
-        ErrorResponse::from("decryption failure")
-    })?;
+    let capability: Capability = ctx.parse_capability(token)?;
 
     Ok(handle_upload(capability, name, body, content_length, ctx).await)
 }
 
 async fn handle_upload(
-    cap: UploadCapability,
+    cap: Capability,
     name: String,
     mut body: BodyStream,
     content_length: Option<u64>,
