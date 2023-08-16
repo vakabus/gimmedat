@@ -1,22 +1,54 @@
 {% extends "layout.html.j2" %}
 {% block body %}
 
+{% if can_upload %}
 <div>
-    <h3>Files</h3>
-    {% if let Some(files) = files %}
-        <ul id="uploaded-files">
-            <li><i>... no files here 😢</i></li>
-            {% for file in files %}
-                {% if let Some(link) = file.link %}
-                    <li><a href="{{ link }}">{{ file.name }}</a></li>
-                {% else %}
-                    <li>{{ file.name }}</li>
-                {% endif %}
-            {% endfor %}
-        </ul>
-    {% else %}
-        <p><i>Unfortunatelly, you are not allowed to browse the files within the directory. </i></p>
-    {% endif %}
+    <section>
+        <aside>
+            <h2>Limits</h2>
+            <ul>
+                <li><b><span id="bytes">{{ maxsize_bytes }} bytes</span></b></li>
+                <li><b><span id="remaining">{{ remaining_sec }} seconds</span></b></li>
+            </ul>
+        </aside>
+        <aside>
+            <button style="width: 100%" onclick="document.getElementById('file').click()"><h2>&#8594; Upload files &#8592;</h2></button>
+            <input type="file" id="file" multiple style="display: none;"/>
+            <p class="center" id="status">No files selected...</p>
+            <div id="overall" class="progressbar" style="display: none;"><div class="label">0/0</div><div class="bar"></div></div>
+            <div id="single-file" class="progressbar" style="display: none;"><div class="label">0/0</div><div class="bar" /></div></div>
+        </aside>
+        <aside>
+            <h2>Upload with curl</h2>
+            <p>Click to copy:</p>
+            <code onclick="window.getSelection().selectAllChildren(this); document.execCommand('copy');">curl "{{ url }}" -T path/to/file/to/upload.ext</code>
+        </aside>
+    </section>
+
+    <script>
+        {% include "upload.js.j2" %}
+    </script>
 </div>
+{% endif %}
+
+<article>
+    <h1>Files</h1>
+    {% if let Some(files) = files %}
+        <div id="file-list">
+            <large><b>Name</b></large>
+            {% for file in files %}
+            <div>
+                {% if let Some(link) = file.link %}
+                    <a href="{{ link }}">{{ file.name }}{% if !file.is_file %}/{% endif %}</a>
+                {% else %}
+                    {{ file.name }}{% if !file.is_file %}/{% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p><i>Unfortunatelly, you are not allowed to list the files of the directory.</i></p>
+    {% endif %}
+</article>
 
 {% endblock %}

@@ -16,9 +16,9 @@ pub struct Args {
     #[clap(short, long)]
     secret: String,
 
-    /// Allow unlimited uploads to a given directory on the root url
+    /// Do not check for the secret
     #[clap(long)]
-    public_access: Option<String>,
+    public: bool,
 
     /// TCP port to listen on
     #[clap(short, long, default_value_t = 3000)]

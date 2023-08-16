@@ -6,6 +6,7 @@ use axum::{
     response::{ErrorResponse, IntoResponse},
     TypedHeader,
 };
+use axum_extra::extract::OptionalPath;
 use rand_core::{OsRng, RngCore};
 use tracing::{info, warn};
 
@@ -67,7 +68,7 @@ async fn handle_upload(
         Err(err) => {
             warn!("Error processing request: {}", err);
             return Err(ErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
+                StatusCode::INTERNAL_SERVER_ERROR,  // FIXME this catches even legitimate errors with 500
                 format!("{err}"),
             )));
         }
@@ -105,13 +106,17 @@ async fn handle_upload(
 
 pub async fn put_upload_public(
     State(ctx): State<Box<Context>>,
-    Path((capability, name)): Path<(String, Option<String>)>,
+    OptionalPath(name): OptionalPath<String>,
     content_length: Option<TypedHeader<ContentLength>>,
     body: BodyStream,
 ) -> axum::response::Result<impl IntoResponse> {
+    if ! ctx.is_open_access_enabled() {
+        return Err(ErrorResponse::from((StatusCode::FORBIDDEN, "Open access is not enabled!".to_owned())));
+    }
+
     let content_length = content_length.map(|c| c.0 .0);
     let name = name.unwrap_or_else(|| OsRng.next_u64().to_string());
-    let cap = ctx.crypto.decrypt(capability).map_err(|e| { warn!("capability decryption error: {:?}", e); ErrorResponse::from("decryption failure") })?;
+    let cap = Capability::root();
 
     Ok(handle_upload(cap, name, body, content_length, ctx).await)
 }

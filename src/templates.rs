@@ -68,26 +68,42 @@ impl UploadResponseTemplate {
     }
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct File {
+    is_file: bool,
     name: String,
     link: Option<String>,
 }
 
 impl File {
-    pub fn new(name: String, link: Option<String>) -> Self {
-        Self { name, link }
+    pub fn new(is_file: bool, name: String, link: Option<String>) -> Self {
+        Self {
+            is_file,
+            name,
+            link,
+        }
     }
 }
 
 #[derive(Template)]
 #[template(path = "browse.html.j2")]
 pub struct BrowseTemplate {
+    can_upload: bool,
     files: Option<Vec<File>>,
+    maxsize_bytes: u64,
+    remaining_sec: u64,
+    url: String,
 }
 
 impl BrowseTemplate {
-    pub fn new(files: Option<Vec<File>>) -> Self {
-        Self { files }
+    pub fn new(cap: Capability, files: Option<Vec<File>>) -> Self {
+        Self {
+            can_upload: cap.can_write(),
+            files,
+            maxsize_bytes: 0,
+            remaining_sec: 0,
+            url: "placeholder".to_owned()
+        }
     }
 }
 

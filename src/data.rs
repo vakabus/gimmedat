@@ -1,6 +1,8 @@
+use askama_axum::IntoResponse;
 use async_std::fs::File;
 use async_std::fs::OpenOptions;
 use async_std::sync::Mutex;
+use axum::http::StatusCode;
 use serde_derive::{Deserialize, Serialize};
 use tracing::error;
 use tracing::warn;
@@ -60,6 +62,17 @@ impl Capability {
             p: dir_name,
             s: maxsize,
             t: current_unix_timestamp() + validity_duration,
+            u: true, // FIXME
+            d: true, // FIXME
+            x: true, // FIXME
+        }
+    }
+
+    pub fn root() -> Self {
+        Capability {
+            p: ".".to_owned(),
+            s: u64::MAX,
+            t: u64::MAX,
             u: true, // FIXME
             d: true, // FIXME
             x: true, // FIXME
@@ -191,7 +204,7 @@ impl Directory {
             /* check for finished file name collision & claim it if it's free */
             let mut names = self.filenames.lock().await;
             if names.contains(&filename_os) {
-                return Err("file already exists".to_owned());
+                return Err("file already exists\n".to_owned());
             }
             names.insert(filename_os);
         }

@@ -1,10 +1,11 @@
-use axum::response::{Result, ErrorResponse};
+use axum::response::{ErrorResponse, Result};
 use nanoid::nanoid;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::crypto::CryptoState;
-use crate::data::{DirectoryRegistry, Capability};
+use crate::data::{Capability, Directory, DirectoryRegistry};
 use crate::Args;
 use axum::body::Body;
 use axum::http::{Request, Response, StatusCode};
@@ -13,7 +14,7 @@ use axum::Router;
 use http_body::combinators::UnsyncBoxBody;
 
 use tower_http::trace::TraceLayer;
-use tracing::{field, info, Span, error};
+use tracing::{error, field, info, Span};
 
 mod api;
 mod ui;
@@ -23,55 +24,46 @@ pub struct Context {
     crypto: CryptoState,
     dirs: DirectoryRegistry,
     base_url: String,
-    public_dir: Option<String>,
+    /// whether we check for secret at /
+    open: bool,
 }
 
 impl Context {
-    fn new(secret: &str, base_url: String, public_dir: Option<String>) -> Self {
+    fn new(secret: &str, base_url: String, public: bool) -> Self {
         Context {
             crypto: CryptoState::new(secret),
             base_url,
-            public_dir,
+            open: public,
             dirs: DirectoryRegistry::new(),
         }
     }
 
-    fn create_upload_link(&self, cap: &Capability) -> String {
-        format!("{}/{}/", self.base_url, &self.crypto.encrypt(cap))
+    fn create_absolute_link(&self, cap: &Capability) -> String {
+        format!("{}/c/{}/", self.base_url, &self.crypto.encrypt(cap))
     }
 
     fn create_relative_link(&self, cap: &Capability) -> String {
-        format!("/{}/", &self.crypto.encrypt(cap))
+        format!("/c/{}/", &self.crypto.encrypt(cap))
     }
 
-    fn create_public_link(&self) -> String {
-        format!("{}/", self.base_url)
-    }
-
-    fn public_access_enabled(&self) -> bool {
-        self.public_dir.is_some()
-    }
-
-    fn create_public_capability(&self) -> Capability {
-        let token = Capability::new(
-            self.public_dir
-                .as_ref()
-                .expect("can't create public token when there is no public dir set")
-                .clone(),
-            u64::MAX,
-            u64::MAX / 2,
-        );
-
-        /* run validation */
-        token.validate().expect("public token validation failed");
-
-        token
+    fn is_open_access_enabled(&self) -> bool {
+        self.open
     }
 
     pub fn parse_capability(&self, token: String) -> Result<Capability> {
-        self.crypto.decrypt(token).map_err(|_| {
-            ErrorResponse::from((StatusCode::BAD_REQUEST, "invalid capability"))
-        })
+        self.crypto
+            .decrypt(token)
+            .map_err(|_| ErrorResponse::from((StatusCode::BAD_REQUEST, "invalid capability")))
+    }
+
+    pub async fn get_directory_ref(
+        &self,
+        cap: &Capability,
+    ) -> axum::response::Result<Arc<Directory>> {
+        self.dirs
+            .get(cap.dir_name())
+            .await
+            .map_err(|e| ErrorResponse::from((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))
     }
 }
 
@@ -108,20 +100,18 @@ pub async fn start_webserver(args: Args) -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/", get(ui::get_index))
-        .route("/gen", post(ui::post_generate_link))
+        .route("/:name", put(api::put_upload_public))
+        .route("/gen", post(ui::post_auth))
+        .route("/c/:capability/", put(api::put_upload).get(ui::get_browse))
         .route(
-            "/:capability/",
-            put(api::put_upload).get(ui::get_browse),
-        )
-        .route(
-            "/:capability/:name",
+            "/c/:capability/:name",
             put(api::put_upload).get(ui::get_upload_help),
         )
         .layer(tracer);
     let app = app.with_state(Box::new(Context::new(
         &args.secret,
         args.base_url,
-        args.public_access,
+        args.public,
     )));
 
     /*
