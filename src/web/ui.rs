@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::body::StreamBody;
 use axum::extract::{Path, State};
 use axum::headers::{ContentLength, ContentType, HeaderMapExt};
@@ -6,6 +8,7 @@ use axum::response::{ErrorResponse, IntoResponse, Redirect, Result};
 use axum::Form;
 use bytes::Bytes;
 use serde_derive::Deserialize;
+use tokio::time::sleep;
 use tracing::log::warn;
 use urlencoding::encode;
 
@@ -20,6 +23,8 @@ pub struct GenQuery {
     secret: String,
 }
 
+const AUTH_FAILURE_SLEEP: Duration = Duration::from_secs(2);
+
 pub async fn post_auth(
     State(ctx): State<Box<Context>>,
     Form(body): Form<GenQuery>,
@@ -29,6 +34,7 @@ pub async fn post_auth(
         let link = ctx.create_relative_link(&token);
         Redirect::to(&link).into_response()
     } else {
+        sleep(AUTH_FAILURE_SLEEP).await;
         IndexTemplate::new(true).into_response()
     }
 }

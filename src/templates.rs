@@ -58,7 +58,9 @@ pub struct BrowseTemplate {
     current_bytes: u64,
     maxsize_bytes: u64,
     remaining_sec: u64,
+    cap: Capability,
     url: String,
+    update_url: String,
 }
 
 impl BrowseTemplate {
@@ -70,6 +72,8 @@ impl BrowseTemplate {
             maxsize_bytes: cap.size_limit(),
             remaining_sec: cap.remaining_time_secs(),
             url: ctx.create_absolute_link(&cap),
+            update_url: ctx.create_relative_update_url(&cap),
+            cap: cap,
         }
     }
 }

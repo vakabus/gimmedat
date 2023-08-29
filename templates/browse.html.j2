@@ -32,8 +32,10 @@
 </div>
 {% endif %}
 
+{% if cap.can_list() %}
 <article>
     <h1>Files</h1>
+    <p><a href="{{update_url}}?block_list=true">Hide this list</a></p>
     {% if let Some(files) = files %}
         <div id="file-list">
             <large><b>Name</b></large>
@@ -48,8 +50,9 @@
             {% endfor %}
         </div>
     {% else %}
-        <p><i>Unfortunatelly, you are not allowed to list the files of the directory.</i></p>
+        <p><i>There are no files in this directory. 😢</i></p>
     {% endif %}
 </article>
+{% endif %}
 
 {% endblock %}

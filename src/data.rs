@@ -45,10 +45,10 @@ pub struct Capability {
     s: u64,
     /// timeout (unix timestamp)
     t: u64,
-    /// owner of this capability is allowed to upload files
-    d: bool,
     /// owner of this capability is allowed to download files
-    u: bool,
+    r: bool,
+    /// owner of this capability is allowed to upload files
+    w: bool,
     /// owner of this capability is allowed to list directories
     x: bool,
 }
@@ -64,8 +64,8 @@ impl Capability {
             p: ".".to_owned(),
             s: u64::MAX,
             t: u64::MAX,
-            u: true,
-            d: true,
+            w: true,
+            r: true,
             x: true,
         }
     }
@@ -118,11 +118,23 @@ impl Capability {
     }
 
     pub fn can_read(&self) -> bool {
-        self.d
+        self.r
     }
 
     pub fn can_write(&self) -> bool {
-        self.u
+        self.w
+    }
+
+    pub fn block_listing(self) -> Self {
+        Capability { x: false, ..self }
+    }
+
+    pub fn block_reading(self) -> Self {
+        Capability { r: false, ..self }
+    }
+
+    pub fn block_writing(self) -> Self {
+        Capability { w: false, ..self }
     }
 }
 

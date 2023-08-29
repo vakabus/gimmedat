@@ -1,13 +1,14 @@
 use async_std::{io::WriteExt, stream::StreamExt};
 use axum::{
-    extract::{BodyStream, Path, State},
+    extract::{BodyStream, Path, Query, State},
     headers::ContentLength,
     http::StatusCode,
-    response::{ErrorResponse, IntoResponse},
+    response::{ErrorResponse, IntoResponse, Redirect},
     TypedHeader,
 };
 use axum_extra::extract::OptionalPath;
 use rand_core::{OsRng, RngCore};
+use serde_derive::Deserialize;
 use tracing::{info, warn};
 
 use crate::{data::Capability, templates::UploadResponseTemplate};
@@ -119,4 +120,35 @@ pub async fn put_upload_public(
     let cap = Capability::root();
 
     Ok(handle_upload(cap, name, body, content_length, ctx).await)
+}
+
+#[derive(Deserialize)]
+pub struct CapUpdateQuery {
+    #[serde(default)]
+    block_read: bool,
+    #[serde(default)]
+    block_write: bool,
+    #[serde(default)]
+    block_list: bool,
+}
+
+pub async fn get_update_capability(
+    State(ctx): State<Box<Context>>,
+    Path(token): Path<String>,
+    Query(qry): Query<CapUpdateQuery>,
+) -> axum::response::Result<impl IntoResponse> {
+    let mut cap = ctx.parse_capability(token)?;
+
+    if qry.block_list {
+        cap = cap.block_listing();
+    }
+    if qry.block_read {
+        cap = cap.block_reading();
+    }
+    if qry.block_write {
+        cap = cap.block_writing();
+    }
+
+    // redirect at the end
+    Ok(Redirect::to(&ctx.create_relative_link(&cap)))
 }
