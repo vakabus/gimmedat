@@ -37,11 +37,11 @@ impl UploadResponseTemplate {
 pub struct File {
     is_file: bool,
     name: String,
-    link: Option<String>,
+    link: String,
 }
 
 impl File {
-    pub fn new(is_file: bool, name: String, link: Option<String>) -> Self {
+    pub fn new(is_file: bool, name: String, link: String) -> Self {
         Self {
             is_file,
             name,
@@ -53,7 +53,6 @@ impl File {
 #[derive(Template)]
 #[template(path = "browse.html.j2")]
 pub struct BrowseTemplate {
-    can_upload: bool,
     files: Option<Vec<File>>,
     current_bytes: u64,
     maxsize_bytes: u64,
@@ -66,7 +65,6 @@ pub struct BrowseTemplate {
 impl BrowseTemplate {
     pub fn new(cap: Capability, ctx: &Context, dir: &Directory, files: Option<Vec<File>>) -> Self {
         Self {
-            can_upload: cap.can_write(),
             files,
             current_bytes: dir.get_total_bytes(),
             maxsize_bytes: cap.size_limit(),

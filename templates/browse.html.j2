@@ -1,7 +1,7 @@
 {% extends "layout.html.j2" %}
 {% block body %}
 
-{% if can_upload %}
+{% if cap.can_write() %}
 <div>
     <section>
         <aside>
@@ -35,16 +35,20 @@
 {% if cap.can_list() %}
 <article>
     <h1>Files</h1>
-    <p><a href="{{update_url}}?block_list=true">Hide this list</a></p>
+    <p><a href="{{update_url}}?block_list=true">Hide this list</a> {% if cap.can_read() %}<a href="{{update_url}}?block_read=true">Block downloads</a>{% endif %}</p>
     {% if let Some(files) = files %}
         <div id="file-list">
             <large><b>Name</b></large>
             {% for file in files %}
             <div>
-                {% if let Some(link) = file.link %}
-                    <a href="{{ link }}">{{ file.name }}{% if !file.is_file %}/{% endif %}</a>
+                {% if cap.can_read() %}
+                    <a href="{{ file.link }}">{{ file.name }}{% if !file.is_file %}/{% endif %}</a>
                 {% else %}
-                    {{ file.name }}{% if !file.is_file %}/{% endif %}
+                    {% if file.is_file %}
+                        {{ file.name }}{% if !file.is_file %}/{% endif %}
+                    {% else %}
+                        <a href="{{ file.link }}">{{ file.name }}{% if !file.is_file %}/{% endif %}</a>
+                    {% endif %}
                 {% endif %}
             </div>
             {% endfor %}

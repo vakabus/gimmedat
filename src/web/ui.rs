@@ -103,11 +103,7 @@ async fn prep_file_list(
         .await
         .into_iter()
         .map(|(n, r)| {
-            let link = if cap.can_read() {
-                Some(ctx.create_relative_link(&cap.child(&n)))
-            } else {
-                None
-            };
+            let link = ctx.create_relative_link(&cap.child(&n));
             crate::templates::File::new(r == FileRef::File, n.to_string_lossy().into(), link)
         })
         .collect();
