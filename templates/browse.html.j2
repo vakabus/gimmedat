@@ -4,6 +4,7 @@
 {% if cap.can_write() %}
 <div>
     <section>
+        <p><a href="{{update_url}}?block_write=true">Block uploads</a></p>
         <aside>
             <h2>Resources</h2>
             <ul>
@@ -56,6 +57,12 @@
     {% else %}
         <p><i>There are no files in this directory. 😢</i></p>
     {% endif %}
+</article>
+{% endif %}
+
+{% if !cap.can_list() && !cap.can_write() %}
+<article>
+    <p>You are not allowed to do anything with this link. Sorry. 🤷</p>
 </article>
 {% endif %}
 
