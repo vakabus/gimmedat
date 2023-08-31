@@ -1,10 +1,9 @@
 {% extends "layout.html.j2" %}
 {% block body %}
 
-{% if cap.can_write() %}
 <div>
     <section>
-        <p><a href="{{update_url}}?block_write=true">Block uploads</a></p>
+    {% if cap.can_write() %}
         <aside>
             <h2>Resources</h2>
             <ul>
@@ -25,18 +24,38 @@
             <p>Click to copy the command template:</p>
             <code class="code-scroll" onclick="window.getSelection().selectAllChildren(this); document.execCommand('copy');">curl "{{ url }}" -T path/to/file/to/upload.ext</code>
         </aside>
-    </section>
 
-    <script>
-        {% include "upload.js.j2" %}
-    </script>
+        <script>
+            {% include "upload.js.j2" %}
+        </script>
+    {% endif %}
+
+    {% if cap.can_be_modified() %}
+        <aside>
+            <h2>Modify capability</h2>
+            <ul>
+                {% if cap.can_list() %}
+                    <li><a href="{{update_url}}?block_list=true">Hide file list</a></li>
+                {% endif %}
+                {% if cap.can_read() %}
+                    <li><a href="{{update_url}}?block_read=true">Block downloads</a></li>
+                {% endif %}
+                {% if cap.can_write() %}
+                    <li><a href="{{update_url}}?block_write=true">Block uploads</a></li>
+                {% endif %}
+                <li><a href="{{update_url}}?block_capability_changes=true">Prevent capability modifications</a></li>
+            </ul>
+        </aside>
+    {% endif %}
+    </section>
 </div>
-{% endif %}
 
 {% if cap.can_list() %}
 <article>
     <h1>Files</h1>
-    <p><a href="{{update_url}}?block_list=true">Hide this list</a> {% if cap.can_read() %}<a href="{{update_url}}?block_read=true">Block downloads</a>{% endif %}</p>
+    {% if cap.can_be_modified() %}
+        <p><a href="{{update_url}}?block_list=true">Hide this list</a> {% if cap.can_read() %}<a href="{{update_url}}?block_read=true">Block downloads</a>{% endif %}</p>
+    {% endif %}
     {% if let Some(files) = files %}
         <div id="file-list">
             <large><b>Name</b></large>

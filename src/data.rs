@@ -51,6 +51,8 @@ pub struct Capability {
     w: bool,
     /// owner of this capability is allowed to list directories
     x: bool,
+    /// owner of this capability is allowed to modify this capability
+    c: bool,
 }
 
 impl Capability {
@@ -67,6 +69,7 @@ impl Capability {
             w: true,
             r: true,
             x: true,
+            c: true,
         }
     }
 
@@ -125,6 +128,10 @@ impl Capability {
         self.w
     }
 
+    pub fn can_be_modified(&self) -> bool {
+        self.c
+    }
+
     pub fn block_listing(self) -> Self {
         Capability { x: false, ..self }
     }
@@ -135,6 +142,10 @@ impl Capability {
 
     pub fn block_writing(self) -> Self {
         Capability { w: false, ..self }
+    }
+
+    pub fn block_capability_modifications(self) -> Self {
+        Capability { c: false, ..self }
     }
 }
 

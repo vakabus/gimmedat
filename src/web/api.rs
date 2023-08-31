@@ -130,6 +130,8 @@ pub struct CapUpdateQuery {
     block_write: bool,
     #[serde(default)]
     block_list: bool,
+    #[serde(default)]
+    block_capability_changes: bool,
 }
 
 pub async fn get_update_capability(
@@ -139,6 +141,9 @@ pub async fn get_update_capability(
 ) -> axum::response::Result<impl IntoResponse> {
     let mut cap = ctx.parse_capability(token)?;
 
+    if qry.block_capability_changes {
+        cap = cap.block_capability_modifications();
+    }
     if qry.block_list {
         cap = cap.block_listing();
     }
