@@ -766,7 +766,7 @@ checksum = "b6c80984affa11d98d1b88b66ac8853f143217b399d3c74116778ff8fdb4ed2e"
 
 [[package]]
 name = "gimmedat"
-version = "1.4.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "askama",
