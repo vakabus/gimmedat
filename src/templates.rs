@@ -63,7 +63,12 @@ pub struct BrowseTemplate {
 }
 
 impl BrowseTemplate {
-    pub fn new(cap: Capability, ctx: &Context, dir: &Directory, files: Option<Vec<File>>) -> Self {
+    pub fn new(
+        cap: Capability,
+        ctx: &Context,
+        dir: &(dyn Directory + Send + Sync),
+        files: Option<Vec<File>>,
+    ) -> Self {
         Self {
             files,
             current_bytes: dir.get_total_bytes(),
@@ -71,7 +76,7 @@ impl BrowseTemplate {
             remaining_sec: cap.remaining_time_secs(),
             url: ctx.create_absolute_link(&cap),
             update_url: ctx.create_relative_update_url(&cap),
-            cap: cap,
+            cap,
         }
     }
 }

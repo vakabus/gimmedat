@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::StreamBody;
@@ -47,6 +48,7 @@ pub async fn get_index(State(ctx): State<Box<Context>>) -> impl IntoResponse {
     }
 }
 
+#[axum::debug_handler]
 pub async fn get_browse(
     State(ctx): State<Box<Context>>,
     Path(token): Path<String>,
@@ -85,18 +87,18 @@ async fn get_browse_dir(
     /* list files */
     let dir = ctx.get_directory_ref(&cap).await?;
     let files = if cap.can_list() {
-        Some(prep_file_list(&cap, &ctx, &dir).await)
+        Some(prep_file_list(&cap, &ctx, dir.clone()).await)
     } else {
         None
     };
 
-    Ok(Box::new(BrowseTemplate::new(cap, &ctx, &dir, files)).into_response())
+    Ok(Box::new(BrowseTemplate::new(cap, &ctx, &*dir, files)).into_response())
 }
 
 async fn prep_file_list(
     cap: &Capability,
     ctx: &Context,
-    dir: &Directory,
+    dir: Arc<dyn Directory + Send + Sync>,
 ) -> Vec<crate::templates::File> {
     let mut res: Vec<crate::templates::File> = dir
         .list_files()

@@ -23,6 +23,13 @@
     padding: 0.5rem 0.5rem;
 }
 
+#file-list > * * {
+    width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
 #file-list > *:hover:not(:first-child) {
     background-color: var(--color-accent);
 }

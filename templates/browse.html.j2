@@ -4,14 +4,20 @@
 <div>
     <section>
     {% if cap.can_write() %}
+        {% if cap.is_enforcing_size_limit() && cap.is_enforcing_time_limit() %}
         <aside>
             <h2>Resources</h2>
             <ul>
-                <li>currently using {{ current_bytes }} bytes</li>
-                <li><b><span id="bytes">{{ maxsize_bytes }} bytes</span></b></li>
-                <li><b><span id="remaining">{{ remaining_sec }} seconds</span></b></li>
+                {% if cap.is_enforcing_size_limit() %}
+                    <li>currently using {{ current_bytes }} bytes</li>
+                    <li><b><span id="bytes">{{ maxsize_bytes }} bytes</span></b></li>
+                {% endif %}
+                {% if cap.is_enforcing_time_limit() %}
+                    <li><b><span id="remaining">{{ remaining_sec }} seconds</span></b></li>
+                {% endif %}
             </ul>
         </aside>
+        {% endif %}
         <aside>
             <button style="width: 100%" onclick="document.getElementById('file').click()"><h2>&#8594; Upload files &#8592;</h2></button>
             <input type="file" id="file" multiple style="display: none;"/>
@@ -22,7 +28,11 @@
         <aside>
             <h2>Upload with curl</h2>
             <p>Click to copy the command template:</p>
-            <code class="code-scroll" onclick="window.getSelection().selectAllChildren(this); document.execCommand('copy');">curl "{{ url }}" -T path/to/file/to/upload.ext</code>
+            <code class="code-scroll" onclick="window.getSelection().selectAllChildren(this); document.execCommand('copy');" id="curl">curl "{{ url }}" -T path/to/file/to/upload.ext</code>
+            <script>
+                // this snippet fixes the weirdness of different curl link (a new nonce is used during encryption => different link)
+                document.getElementById("curl").innerHTML = `curl "${window.location}" -T path/to/file/to/upload.ext`
+            </script>
         </aside>
 
         <script>

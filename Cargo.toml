@@ -23,7 +23,7 @@ bytes = { version = "1.4.0", features = ["std"] }
 tokio = { version = "1.29.1", features = ["full"] }
 tracing-subscriber = "0.3.17"
 tracing = "0.1.37"
-tower-http = { version = "0.4.3", features = ["trace"] }
+tower-http = { version = "0.4.3", features = ["trace", "cors"] }
 tower = "0.4.13"
 http-body = "0.4.5"
 nanoid = "0.4.0"

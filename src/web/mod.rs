@@ -3,6 +3,7 @@ use nanoid::nanoid;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
+use tower_http::cors::{Any, CorsLayer};
 
 use crate::crypto::CryptoState;
 use crate::data::{Capability, Directory, DirectoryRegistry};
@@ -63,9 +64,9 @@ impl Context {
     pub async fn get_directory_ref(
         &self,
         cap: &Capability,
-    ) -> axum::response::Result<Arc<Directory>> {
+    ) -> axum::response::Result<Arc<dyn Directory + Send + Sync>> {
         self.dirs
-            .get(cap.path())
+            .get(cap)
             .await
             .map_err(|e| ErrorResponse::from((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))
     }
@@ -101,14 +102,16 @@ pub async fn start_webserver(args: Args) -> anyhow::Result<()> {
                 };
             },
         );
+    let cors = CorsLayer::new().allow_origin(Any);
 
     let app = Router::new()
         .route("/", get(ui::get_index))
-        .route("/:name", put(api::put_upload_public))
         .route("/gen", post(ui::post_auth))
+        .route("/:name", put(api::put_upload_public))
         .route("/c/:capability/", put(api::put_upload).get(ui::get_browse))
         .route("/c/:capability/:name", put(api::put_upload))
         .route("/u/:capability", get(api::get_update_capability))
+        .layer(cors)
         .layer(tracer);
     let app = app.with_state(Box::new(Context::new(
         &args.secret,

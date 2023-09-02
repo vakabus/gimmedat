@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use async_std::fs::read_dir;
 use async_std::fs::DirBuilder;
 use async_std::fs::DirEntry;
@@ -7,6 +8,7 @@ use async_std::io;
 use async_std::path::Path;
 use async_std::path::PathBuf;
 use async_std::sync::Mutex;
+use async_trait::async_trait;
 use futures_lite::Stream;
 use futures_lite::StreamExt;
 use serde_derive::{Deserialize, Serialize};
@@ -41,7 +43,7 @@ fn current_unix_timestamp() -> u64 {
 pub struct Capability {
     /// path name
     p: String,
-    /// size limit in bytes
+    /// size limit in bytes (u64::MAX = non-enforcing)
     s: u64,
     /// timeout (unix timestamp)
     t: u64,
@@ -60,6 +62,14 @@ impl Capability {
         self.s
     }
 
+    pub fn is_enforcing_size_limit(&self) -> bool {
+        self.s != u64::MAX
+    }
+
+    pub fn is_enforcing_time_limit(&self) -> bool {
+        self.t != u64::MAX
+    }
+
     /// Construct a capability with full privileges
     pub fn root() -> Self {
         Capability {
@@ -71,14 +81,6 @@ impl Capability {
             x: true,
             c: true,
         }
-    }
-
-    pub fn validate(&self) -> Result<(), &'static str> {
-        if self.p.contains('/') {
-            return Err("the given path contains invalid characters");
-        }
-
-        Ok(())
     }
 
     pub fn is_expired(&self) -> bool {
@@ -155,182 +157,167 @@ pub enum FileRef {
     Dir,
 }
 
-pub struct Directory {
+async fn calculate_existing_dir_size(dir: &Path) -> anyhow::Result<u64> {
+    async fn extend<A>(
+        vec: &mut Vec<A>,
+        mut stream: Pin<Box<dyn Stream<Item = io::Result<A>> + Send>>,
+    ) -> io::Result<()> {
+        while let Some(val) = stream.next().await {
+            vec.push(val?);
+        }
+        Ok(())
+    }
+
+    let mut size = 0u64;
+    let mut stack: Vec<DirEntry> = vec![];
+    let mut count = 0;
+    extend(&mut stack, Box::pin(read_dir(dir).await?)).await?;
+
+    while let Some(dir) = stack.pop() {
+        // monitoring
+        count += 1;
+        if count == 1000 {
+            warn!("traversing huge directory with more than 1000 files");
+        }
+
+        // accounting
+        let metadata = dir.metadata().await.unwrap();
+        size += metadata.size(); // file content
+        size += dir.file_name().len() as u64; // length of the file name
+        size += 4096; // constant overhead to account for metadata space of empty files
+
+        // recurse into the directory
+        if metadata.is_dir() {
+            extend(&mut stack, Box::pin(read_dir(dir.path()).await?)).await?;
+        }
+    }
+
+    // monitoring
+    if count > 1000 {
+        warn!("the directory had {} children", count);
+    }
+
+    Ok(size)
+}
+
+async fn assert_path_existence(path: &Path) {
+    assert!(path.exists().await, "Directory does not exist");
+    assert!(path.is_dir().await, "Path is not a directory");
+}
+
+async fn ensure_path_existence(path: &Path) {
+    if !(path.exists().await && path.is_dir().await) {
+        DirBuilder::new()
+            .recursive(true)
+            .create(path)
+            .await
+            .expect("creating directory should never fail");
+    }
+}
+
+async fn create_fileref_set(path: &Path) -> HashMap<OsString, FileRef> {
+    let entries: Vec<DirEntry> = read_dir(path)
+        .await
+        .unwrap()
+        .collect::<Vec<std::io::Result<DirEntry>>>()
+        .await
+        .into_iter()
+        .map(|v| v.unwrap())
+        .collect();
+
+    let mut files = HashMap::with_capacity(entries.len());
+    for entry in entries {
+        let metadata = entry.metadata().await.unwrap();
+
+        if metadata.is_dir() {
+            files.insert(entry.file_name(), FileRef::Dir);
+        } else {
+            files.insert(entry.file_name(), FileRef::File);
+        }
+    }
+    files
+}
+
+async fn create_file_writer<'a>(
+    dir: &'a UnsizedDirectory,
+    uc: &Capability,
+    filename: &'a str,
+    expected_size: Option<u64>,
+    uploaded_size: Option<&'a AtomicU64>,
+) -> Result<DirectoryFileWriter<'a>, String> {
+    assert_path_existence(&dir.path).await;
+    let partial_name = get_partial_file_name(&dir.path, filename);
+
+    let filename_os = OsString::from(filename);
+
+    /* lock the filename we are working on */
+    {
+        /* check for finished file name collision & claim it if it's free */
+        let mut names = dir.filenames.lock().await;
+        if names.contains_key(&filename_os) {
+            return Err("file already exists\n".to_owned());
+        }
+        names.insert(filename_os, FileRef::File);
+    }
+
+    /* there is still a possibility that a partial file exists, however we can
+    be certain that we are not writing into it at the moment, so lets just ignore it
+    and rewrite it */
+
+    /* create partial file writer */
+    let file = OpenOptions::new()
+        .create(true) // this allows rewrites
+        .truncate(true)
+        .write(true)
+        .open(partial_name)
+        .await
+        .expect("creating a new file should never fail here");
+
+    /* report file constant bytes (same as in calculate_existing_data_size()) */
+    if let Some(uploaded_size) = uploaded_size {
+        uploaded_size.fetch_add(4096, Ordering::Relaxed);
+        uploaded_size.fetch_add(filename.len() as u64, Ordering::Relaxed);
+    }
+
+    /* create file writer object */
+    Ok(DirectoryFileWriter::new(
+        dir,
+        uploaded_size,
+        file,
+        uc.size_limit(),
+        filename,
+        expected_size,
+        uc.expiration_time(),
+    ))
+}
+
+fn get_partial_file_name(path: &Path, name: &str) -> PathBuf {
+    let name = format!("{name}$.partial");
+    Path::join(path, name)
+}
+
+fn get_final_file_name(path: &Path, name: &str) -> PathBuf {
+    Path::join(path, name)
+}
+
+struct UnsizedDirectory {
     path: PathBuf,
-    real_size: AtomicU64,
     filenames: Mutex<HashMap<OsString, FileRef>>,
 }
 
-impl Directory {
+impl UnsizedDirectory {
     pub async fn new(path: PathBuf) -> anyhow::Result<Self> {
-        Self::ensure_path_existence(&path).await;
+        ensure_path_existence(&path).await;
 
-        let size = AtomicU64::new(Self::calculate_existing_data_size(&path).await?);
-        let filenames = Mutex::new(Self::create_fileref_set(&path).await);
+        let filenames = Mutex::new(create_fileref_set(&path).await);
 
-        Ok(Self {
-            path,
-            real_size: size,
-            filenames,
-        })
-    }
-
-    async fn ensure_path_existence(path: &Path) {
-        if !(path.exists().await && path.is_dir().await) {
-            DirBuilder::new()
-                .recursive(true)
-                .create(path)
-                .await
-                .expect("creating directory should never fail");
-        }
-    }
-
-    async fn assert_path_existence(path: &Path) {
-        assert!(path.exists().await, "Directory does not exist");
-        assert!(path.is_dir().await, "Path is not a directory");
-    }
-
-    async fn create_fileref_set(path: &Path) -> HashMap<OsString, FileRef> {
-        let entries: Vec<DirEntry> = read_dir(path)
-            .await
-            .unwrap()
-            .collect::<Vec<std::io::Result<DirEntry>>>()
-            .await
-            .into_iter()
-            .map(|v| v.unwrap())
-            .collect();
-
-        let mut files = HashMap::with_capacity(entries.len());
-        for entry in entries {
-            let metadata = entry.metadata().await.unwrap();
-
-            if metadata.is_dir() {
-                files.insert(entry.file_name(), FileRef::Dir);
-            } else {
-                files.insert(entry.file_name(), FileRef::File);
-            }
-        }
-        files
-    }
-
-    async fn calculate_existing_data_size(dir: &Path) -> anyhow::Result<u64> {
-        async fn extend<A>(
-            vec: &mut Vec<A>,
-            mut stream: Pin<Box<dyn Stream<Item = io::Result<A>> + Send>>,
-        ) -> io::Result<()> {
-            while let Some(val) = stream.next().await {
-                vec.push(val?);
-            }
-            Ok(())
-        }
-
-        let mut size = 0u64;
-        let mut stack: Vec<DirEntry> = vec![];
-        let mut count = 0;
-        extend(&mut stack, Box::pin(read_dir(dir).await?)).await?;
-
-        while let Some(dir) = stack.pop() {
-            // monitoring
-            count += 1;
-            if count == 1000 {
-                warn!("traversing huge directory with more than 1000 files");
-            }
-
-            // accounting
-            let metadata = dir.metadata().await.unwrap();
-            size += metadata.size(); // file content
-            size += dir.file_name().len() as u64; // length of the file name
-            size += 4096; // constant overhead to account for metadata space of empty files
-
-            // recurse into the directory
-            if metadata.is_dir() {
-                extend(&mut stack, Box::pin(read_dir(dir.path()).await?)).await?;
-            }
-        }
-
-        // monitoring
-        if count > 1000 {
-            warn!("the directory had {} children", count);
-        }
-
-        Ok(size)
-    }
-
-    pub async fn create_file_writer<'a>(
-        &'a self,
-        uc: &Capability,
-        filename: &'a str,
-        expected_size: Option<u64>,
-    ) -> Result<DirectoryFileWriter<'a>, String> {
-        Self::assert_path_existence(&self.path).await;
-        let partial_name = self.get_partial_file_name(filename);
-
-        let filename_os = OsString::from(filename);
-
-        /* lock the filename we are working on */
-        {
-            /* check for finished file name collision & claim it if it's free */
-            let mut names = self.filenames.lock().await;
-            if names.contains_key(&filename_os) {
-                return Err("file already exists\n".to_owned());
-            }
-            names.insert(filename_os, FileRef::File);
-        }
-
-        /* there is still a possibility that a partial file exists, however we can
-        be certain that we are not writing into it at the moment, so lets just ignore it
-        and rewrite it */
-
-        /* create partial file writer */
-        let file = OpenOptions::new()
-            .create(true) // this allows rewrites
-            .truncate(true)
-            .write(true)
-            .open(partial_name)
-            .await
-            .expect("creating a new file should never fail here");
-
-        /* report file constant bytes (same as in calculate_existing_data_size()) */
-        self.report_bytes_written(4096);
-        self.report_bytes_written(filename.len());
-
-        /* create file writer object */
-        Ok(DirectoryFileWriter::new(
-            self,
-            &self.real_size,
-            file,
-            uc.size_limit(),
-            filename,
-            expected_size,
-            uc.expiration_time(),
-        ))
-    }
-
-    fn report_bytes_written(&self, bytes: usize) {
-        self.real_size.fetch_add(bytes as u64, Ordering::Relaxed);
-    }
-
-    pub fn get_total_bytes(&self) -> u64 {
-        self.real_size.load(Ordering::Relaxed)
-    }
-
-    pub fn get_remaining_bytes(&self, uc: &Capability) -> u64 {
-        u64::saturating_sub(uc.size_limit(), self.get_total_bytes())
-    }
-
-    fn get_partial_file_name(&self, name: &str) -> PathBuf {
-        let name = format!("{name}$.partial");
-        Path::join(&self.path, name)
-    }
-
-    fn get_final_file_name(&self, name: &str) -> PathBuf {
-        Path::join(&self.path, name)
+        Ok(Self { path, filenames })
     }
 
     async fn mark_upload_final(&self, name: &str) -> std::io::Result<()> {
         async_std::fs::rename(
-            self.get_partial_file_name(name),
-            self.get_final_file_name(name),
+            get_partial_file_name(&self.path, name),
+            get_final_file_name(&self.path, name),
         )
         .await
     }
@@ -341,8 +328,98 @@ impl Directory {
     }
 }
 
+#[async_trait]
+pub trait Directory {
+    async fn list_files(&self) -> Vec<(OsString, FileRef)>;
+    fn get_remaining_bytes(&self, cap: &Capability) -> u64 {
+        u64::saturating_sub(cap.size_limit(), self.get_total_bytes())
+    }
+    fn get_total_bytes(&self) -> u64;
+
+    async fn create_file_writer<'a>(
+        &'a self,
+        uc: &Capability,
+        filename: &'a str,
+        expected_size: Option<u64>,
+    ) -> Result<DirectoryFileWriter<'a>, String>;
+
+    fn is_size_limit_enforced(&self) -> bool;
+}
+
+#[async_trait]
+impl Directory for UnsizedDirectory {
+    fn is_size_limit_enforced(&self) -> bool {
+        false
+    }
+
+    async fn list_files(&self) -> Vec<(OsString, FileRef)> {
+        UnsizedDirectory::list_files(self).await
+    }
+
+    fn get_total_bytes(&self) -> u64 {
+        0
+    }
+
+    async fn create_file_writer<'a>(
+        &'a self,
+        cap: &Capability,
+        filename: &'a str,
+        expected_size: Option<u64>,
+    ) -> Result<DirectoryFileWriter<'a>, String> {
+        create_file_writer(self, cap, filename, expected_size, None).await
+    }
+}
+
+struct SizedDirectory {
+    dir: UnsizedDirectory,
+    real_size: AtomicU64,
+}
+
+impl SizedDirectory {
+    pub async fn new(path: PathBuf) -> anyhow::Result<Self> {
+        let size = AtomicU64::new(calculate_existing_dir_size(&path).await?);
+        let dir = UnsizedDirectory::new(path).await?;
+
+        Ok(Self {
+            dir,
+            real_size: size,
+        })
+    }
+}
+
+#[async_trait]
+impl Directory for SizedDirectory {
+    fn is_size_limit_enforced(&self) -> bool {
+        true
+    }
+
+    async fn list_files(&self) -> Vec<(OsString, FileRef)> {
+        self.dir.list_files().await
+    }
+
+    fn get_total_bytes(&self) -> u64 {
+        self.real_size.load(Ordering::Relaxed)
+    }
+
+    async fn create_file_writer<'a>(
+        &'a self,
+        cap: &Capability,
+        filename: &'a str,
+        expected_size: Option<u64>,
+    ) -> Result<DirectoryFileWriter<'a>, String> {
+        create_file_writer(
+            &self.dir,
+            cap,
+            filename,
+            expected_size,
+            Some(&self.real_size),
+        )
+        .await
+    }
+}
+
 pub struct DirectoryFileWriter<'a> {
-    dir: &'a Directory,
+    dir: &'a UnsizedDirectory,
     filename: &'a str,
     file: File,
 
@@ -352,7 +429,7 @@ pub struct DirectoryFileWriter<'a> {
     write_in_progress: bool,
 
     /* helper values for enforcing the size limit */
-    total_size: &'a AtomicU64,
+    total_size: Option<&'a AtomicU64>,
     expected_size: Option<u64>,
     bytes_written: u64,
 
@@ -362,9 +439,9 @@ pub struct DirectoryFileWriter<'a> {
 }
 
 impl<'a> DirectoryFileWriter<'a> {
-    pub fn new(
-        dir: &'a Directory,
-        total_size: &'a AtomicU64,
+    fn new(
+        dir: &'a UnsizedDirectory,
+        total_size: Option<&'a AtomicU64>,
         file: File,
         max_dir_size: u64,
         filename: &'a str,
@@ -412,8 +489,10 @@ impl<'a> DirectoryFileWriter<'a> {
         };
 
         /* warn about data limit exhaustion */
-        if self.max_dir_size <= self.total_size.load(Ordering::Relaxed) {
-            msgs.push("data limit reached while uploading".to_owned());
+        if let Some(total_size) = self.total_size {
+            if self.max_dir_size <= total_size.load(Ordering::Relaxed) {
+                msgs.push("data limit reached while uploading".to_owned());
+            }
         }
 
         if !self.errored {
@@ -440,19 +519,25 @@ impl<'a> async_std::io::Write for DirectoryFileWriter<'a> {
         buf: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
         let this = self.get_mut();
+        let dummy = AtomicU64::new(0);
+        let total_size = if let Some(total_size) = this.total_size {
+            total_size
+        } else {
+            &dummy
+        };
 
         /* reserve the bytes (CAS loop)
         - always Relaxed ordering, because we are working with just a single variable
           and there is no other operation that could be reorderd incorrectly
         - do this only once, before the actual write starts */
         if !this.write_in_progress {
-            let mut current_value = this.total_size.load(Ordering::Relaxed);
+            let mut current_value = total_size.load(Ordering::Relaxed);
             let addition = buf.len() as u64;
             loop {
                 /* every time we loop, check if the bytes fit into the limit */
                 if current_value + addition <= this.max_dir_size {
                     /* if they do, try to allocate */
-                    match this.total_size.compare_exchange_weak(
+                    match total_size.compare_exchange_weak(
                         current_value,
                         current_value + addition,
                         Ordering::Relaxed,
@@ -493,8 +578,7 @@ impl<'a> async_std::io::Write for DirectoryFileWriter<'a> {
 
         if let std::task::Poll::Ready(Ok(size)) = &res {
             /* this function does not necessarily write the whole buffer, so deallocate unused bytes */
-            this.total_size
-                .fetch_sub((buf.len() - size) as u64, Ordering::Relaxed);
+            total_size.fetch_sub((buf.len() - size) as u64, Ordering::Relaxed);
 
             /* update internal state */
             this.write_in_progress = false;
@@ -533,7 +617,7 @@ impl<'a> Drop for DirectoryFileWriter<'a> {
 
 #[derive(Clone)]
 pub struct DirectoryRegistry {
-    real_sizes: Arc<Mutex<HashMap<PathBuf, Weak<Directory>>>>,
+    real_sizes: Arc<Mutex<HashMap<PathBuf, Weak<dyn Directory + Send + Sync>>>>,
 }
 
 impl DirectoryRegistry {
@@ -543,19 +627,37 @@ impl DirectoryRegistry {
         }
     }
 
-    pub async fn get(&self, directory_name: &Path) -> anyhow::Result<Arc<Directory>> {
+    pub async fn get(&self, cap: &Capability) -> anyhow::Result<Arc<dyn Directory + Send + Sync>> {
         let mut lock = self.real_sizes.lock().await;
 
-        let res = lock.get(directory_name);
+        let res = lock.get(cap.path());
         if let Some(wk) = res {
             if let Some(rc) = wk.upgrade() {
+                if cap.is_enforcing_size_limit() && !rc.is_size_limit_enforced() {
+                    // KNOWN PROBLEM: When there are two capabilities for the same directory, one of which does not enforce size limit and the other does, we can't work correctly.
+                    //
+                    // In situation, when:
+                    //   1. unlimited capability makes a request
+                    //   2. while processing the first request, we receive a request with limited capability for the same directory
+                    // At the moment, we cannot upgrade the UnsizedDirectory object to SizedDirectory object transparently while
+                    // there are active references.
+                    return Err(anyhow!("Unable to provide a single directory with limited and unlimited size at the same time. Please try again."));
+                }
+
                 return Ok(rc);
             }
         }
 
-        let dir = Directory::new(PathBuf::from(directory_name)).await?;
-        let res = Arc::new(dir);
-        lock.insert(directory_name.to_owned(), Arc::<Directory>::downgrade(&res));
-        Ok(res)
+        // was not present in the cache, create new object
+        let dir: Arc<dyn Directory + Send + Sync> = if cap.is_enforcing_size_limit() {
+            Arc::new(SizedDirectory::new(cap.path().to_owned()).await?)
+        } else {
+            Arc::new(UnsizedDirectory::new(cap.path().to_owned()).await?)
+        };
+        lock.insert(
+            cap.path().to_owned(),
+            Arc::<dyn Directory + Send + Sync>::downgrade(&dir),
+        );
+        Ok(dir)
     }
 }

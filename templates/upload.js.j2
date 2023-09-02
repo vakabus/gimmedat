@@ -3,21 +3,23 @@ const LOAD_TIME = Date.now()
 const MAX_SIZE_BYTES = {{ maxsize_bytes }}
 let uploaded_bytes = {{ current_bytes }}
 
-function update_time_left() {
-    let rem = document.getElementById("remaining")
+function format_time_left() {
     const seconds_remaining = Math.round(INITIAL_REMAINING_SEC - (Date.now() - LOAD_TIME) / 1000)
     const days = (seconds_remaining / (3600 * 24)) | 0
     const hours = ((seconds_remaining - days*3600*24) / 3600) | 0
     const minutes = ((seconds_remaining - days*3600*24 - hours*3600) / 60) | 0
     const seconds = ((seconds_remaining - days*3600*24 - hours*3600 - minutes*60)) | 0
     if (days < 1000) {
-        rem.innerText = `${days}d ${hours}h ${minutes}m ${seconds}s`
+        return `${days}d ${hours}h ${minutes}m ${seconds}s`
     } else {
-        rem.innerText = "the far future"
+        return "the far future"
     }
+}
 
+function format_expiry_date() {
+    const seconds_remaining = Math.round(INITIAL_REMAINING_SEC - (Date.now() - LOAD_TIME) / 1000)
     // The format is something like "Tuesday, 13 December 2022 at 19:26:21 CET"
-    rem.title = `Expires on ${new Date(Date.now() + seconds_remaining*1000).toLocaleString("en-GB", { dateStyle: 'full', timeStyle: 'long' })}`
+    return new Date(Date.now() + seconds_remaining*1000).toLocaleString("en-GB", { dateStyle: 'full', timeStyle: 'long' })
 }
 
 function format_bytes(bytes) {
@@ -33,11 +35,19 @@ function format_bytes(bytes) {
     }
 }
 
-function update_bytes_left() {
-    let bts = document.getElementById("bytes")
-    bts.innerText = format_bytes(MAX_SIZE_BYTES - uploaded_bytes)
+function update_time_left() {
+    let rem = document.getElementById("remaining")
+    if (rem != null) {
+        rem.innerText = format_time_left()
+        rem.title = format_expiry_date()
+    }
 }
 
+function update_bytes_left() {
+    let bts = document.getElementById("bytes")
+    if (bts != null)
+        bts.innerText = format_bytes(MAX_SIZE_BYTES - uploaded_bytes)
+}
 
 function update_progressbar(id, step, total) {
     let pr = document.getElementById(id)
@@ -86,7 +96,6 @@ function makeRequest(method, url, blob, progressCallback) {
 /** @type HTMLInputElement */
 const fileInput = document.getElementById("file")
 const status = document.getElementById("status")
-const uploadedFiles = document.getElementById("uploaded-files")
 
 fileInput.onchange = async (event) => {
     let files = fileInput.files
@@ -121,9 +130,9 @@ fileInput.onchange = async (event) => {
         processedFiles += 1;
 
         // add the file name to the list of uploaded files
-        let node = document.createElement('li');
+        let node = document.createElement('div');
         node.appendChild(document.createTextNode(encodeURIComponent(f.name)));
-        uploadedFiles.appendChild(node)
+        document.getElementById("file-list").appendChild(node)
     }
 
     // at the end, set all status information to final

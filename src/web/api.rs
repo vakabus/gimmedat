@@ -41,12 +41,6 @@ async fn handle_upload(
             "link expired\n",
         )));
     }
-    if let Err(err) = cap.validate() {
-        return Err(ErrorResponse::from((
-            StatusCode::BAD_REQUEST,
-            format!("link data invalid: {err}\n"),
-        )));
-    }
 
     /* get a target directory reference */
     let directory = ctx.get_directory_ref(&cap).await?;
@@ -140,6 +134,8 @@ pub async fn get_update_capability(
     Query(qry): Query<CapUpdateQuery>,
 ) -> axum::response::Result<impl IntoResponse> {
     let mut cap = ctx.parse_capability(token)?;
+
+    assert!(cap.can_be_modified());
 
     if qry.block_capability_changes {
         cap = cap.block_capability_modifications();
