@@ -43,10 +43,16 @@ function update_time_left() {
     }
 }
 
-function update_bytes_left() {
+function update_current_bytes() {
     let bts = document.getElementById("bytes")
     if (bts != null)
-        bts.innerText = format_bytes(MAX_SIZE_BYTES - uploaded_bytes)
+        bts.innerText = format_bytes(uploaded_bytes)
+}
+
+function update_max_bytes() {
+    let bts = document.getElementById("max-bytes")
+    if (bts != null)
+        bts.innerText = format_bytes(MAX_SIZE_BYTES)
 }
 
 function update_progressbar(id, step, total) {
@@ -59,7 +65,8 @@ function update_progressbar(id, step, total) {
 
 
 /* update remaining time */
-update_bytes_left()
+update_current_bytes()
+update_max_bytes()
 update_time_left()
 setInterval(update_time_left, 1000)
 
@@ -120,7 +127,7 @@ fileInput.onchange = async (event) => {
             update_progressbar("single-file", p, t)
             processedSize += initial_uploaded_bytes + p - uploaded_bytes
             uploaded_bytes = initial_uploaded_bytes + p
-            update_bytes_left()
+            update_current_bytes()
         }).catch((e) => {
             console.error("Error while uploading", f.name)
             console.log(e)

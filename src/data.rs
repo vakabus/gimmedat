@@ -149,6 +149,20 @@ impl Capability {
     pub fn block_capability_modifications(self) -> Self {
         Capability { c: false, ..self }
     }
+
+    pub fn set_size_limit(self, new: u64) -> Self {
+        Capability {
+            s: u64::min(new, self.s),
+            ..self
+        }
+    }
+
+    pub fn set_remaining_secs(self, new: u64) -> Self {
+        Capability {
+            t: u64::min(u64::saturating_add(current_unix_timestamp(), new), self.t),
+            ..self
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]

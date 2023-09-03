@@ -1,19 +1,18 @@
 {% extends "layout.html.j2" %}
 {% block body %}
 
+{% if cap.can_write() %}
 <div>
     <section>
-    {% if cap.can_write() %}
         {% if cap.is_enforcing_size_limit() && cap.is_enforcing_time_limit() %}
         <aside>
-            <h2>Resources</h2>
+            <h2>Limits</h2>
             <ul>
                 {% if cap.is_enforcing_size_limit() %}
-                    <li>currently using {{ current_bytes }} bytes</li>
-                    <li><b><span id="bytes">{{ maxsize_bytes }} bytes</span></b></li>
+                    <li>currently using <span id="bytes">{{ current_bytes }}B</span> out of <span id="max-bytes">{{ maxsize_bytes}}B</span></li>
                 {% endif %}
                 {% if cap.is_enforcing_time_limit() %}
-                    <li><b><span id="remaining">{{ remaining_sec }} seconds</span></b></li>
+                    <li><b>expires in <span id="remaining">{{ remaining_sec }} seconds</span></b></li>
                 {% endif %}
             </ul>
         </aside>
@@ -38,9 +37,13 @@
         <script>
             {% include "upload.js.j2" %}
         </script>
-    {% endif %}
+    </section>
+</div>
+{% endif %}
 
-    {% if cap.can_be_modified() %}
+{% if cap.can_be_modified() %}
+<div>
+    <section>
         <aside>
             <h2>Modify capability</h2>
             <ul>
@@ -56,9 +59,17 @@
                 <li><a href="{{update_url}}?block_capability_changes=true">Prevent capability modifications</a></li>
             </ul>
         </aside>
-    {% endif %}
+        <form action="{{update_url}}" method="GET">
+            <h2>Configure limits</h2>
+            <label for="limit-size">Size limit (e.g. 2GB)</label>
+            <input type="text" id="remaining_bytes" name="remaining_bytes" style="width: calc(100% - 1.6rem)"/>
+            <label for="limit-size">Link expiration (e.g 2d)</label>
+            <input type"text" id="remaining_seconds" name="remaining_seconds" style="width: calc(100% - 1.6rem)"/>
+            <button type="submit">Enforce limits</button>
+        </form>
     </section>
 </div>
+{% endif %}
 
 {% if cap.can_list() %}
 <article>

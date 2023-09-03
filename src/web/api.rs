@@ -8,7 +8,7 @@ use axum::{
 };
 use axum_extra::extract::OptionalPath;
 use rand_core::{OsRng, RngCore};
-use serde_derive::Deserialize;
+use serde::{Deserialize, Deserializer};
 use tracing::{info, warn};
 
 use crate::{data::Capability, templates::UploadResponseTemplate};
@@ -116,7 +116,12 @@ pub async fn put_upload_public(
     Ok(handle_upload(cap, name, body, content_length, ctx).await)
 }
 
+const fn u64_max() -> u64 {
+    u64::MAX
+}
+
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CapUpdateQuery {
     #[serde(default)]
     block_read: bool,
@@ -126,6 +131,85 @@ pub struct CapUpdateQuery {
     block_list: bool,
     #[serde(default)]
     block_capability_changes: bool,
+
+    #[serde(default = "u64_max", deserialize_with = "from_suffixed_str_time")]
+    remaining_seconds: u64,
+    #[serde(default = "u64_max", deserialize_with = "from_suffixed_str_size")]
+    remaining_bytes: u64,
+}
+
+fn from_suffixed_str_size<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    from_suffixed_str(
+        deserializer,
+        ['k', 'm', 'g', 't', 'p'],
+        [
+            1_000,
+            1_000_000,
+            1_000_000_000,
+            1_000_000_000_000,
+            1_000_000_000_000_000,
+        ],
+    )
+}
+
+fn from_suffixed_str_time<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    from_suffixed_str(
+        deserializer,
+        ['s', 'm', 'h', 'd', 'w', 'y'],
+        [
+            1,
+            60,
+            60 * 60,
+            60 * 60 * 24,
+            60 * 60 * 24 * 7,
+            60 * 60 * 24 * 365,
+        ],
+    )
+}
+
+fn from_suffixed_str<'de, D, const N: usize>(
+    deserializer: D,
+    suffixes: [char; N],
+    multipliers: [u64; N],
+) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let input = String::deserialize(deserializer)?;
+
+    // to lowercase
+    let input = input.to_lowercase();
+
+    // default
+    if input.is_empty() {
+        return Ok(u64::MAX);
+    }
+
+    // no suffix
+    if let Ok(res) = input.parse::<u64>() {
+        return Ok(res);
+    }
+
+    // suffix
+    if let Ok(res) = input[..input.len() - 1].parse::<u64>() {
+        let suff = input.chars().last().unwrap();
+        let pos = suffixes.iter().position(|c| *c == suff);
+        if pos.is_none() {
+            return Err(serde::de::Error::custom(format!(
+                "invalid value suffix, only {:?} allowed",
+                suffixes
+            )));
+        }
+        return Ok(res * multipliers[pos.unwrap()]);
+    }
+
+    Err(serde::de::Error::custom(&format!("invalid suffixed number value, expected a number followed by a single character suffix out of {:?}", suffixes)))
 }
 
 pub async fn get_update_capability(
@@ -149,6 +233,10 @@ pub async fn get_update_capability(
     if qry.block_write {
         cap = cap.block_writing();
     }
+
+    cap = cap
+        .set_remaining_secs(qry.remaining_seconds)
+        .set_size_limit(qry.remaining_bytes);
 
     // redirect at the end
     Ok(Redirect::to(&ctx.create_relative_link(&cap)))
