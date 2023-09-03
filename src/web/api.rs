@@ -61,7 +61,7 @@ async fn handle_upload(
             warn!("Error processing request: {}", err);
             return Err(ErrorResponse::from((
                 StatusCode::INTERNAL_SERVER_ERROR, // FIXME this catches even legitimate errors with 500
-                format!("{err}"),
+                err.to_string(),
             )));
         }
     };
