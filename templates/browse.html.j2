@@ -4,7 +4,7 @@
 {% if cap.can_write() %}
 <div>
     <section>
-        {% if cap.is_enforcing_size_limit() && cap.is_enforcing_time_limit() %}
+        {% if cap.is_enforcing_size_limit() || cap.is_enforcing_time_limit() %}
         <aside>
             <h2>Limits</h2>
             <ul>
