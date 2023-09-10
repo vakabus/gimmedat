@@ -102,7 +102,10 @@ pub async fn start_webserver(args: Args) -> anyhow::Result<()> {
                 };
             },
         );
-    let cors = CorsLayer::new().allow_origin(Any);
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
     let app = Router::new()
         .route("/", get(ui::get_index))

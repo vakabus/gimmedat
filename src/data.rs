@@ -262,6 +262,11 @@ async fn create_file_writer<'a>(
     expected_size: Option<u64>,
     uploaded_size: Option<&'a AtomicU64>,
 ) -> Result<DirectoryFileWriter<'a>, String> {
+    /* check filename validity for Linux */
+    if filename.contains('/') || filename.contains(0 as char) {
+        return Err("invalid filename".to_owned());
+    }
+
     assert_path_existence(&dir.path).await;
     let partial_name = get_partial_file_name(&dir.path, filename);
 

@@ -58,9 +58,9 @@ async fn handle_upload(
     {
         Ok(a) => a,
         Err(err) => {
-            warn!("Error processing request: {}", err);
+            warn!("creating file writer failed: {}", err);
             return Err(ErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR, // FIXME this catches even legitimate errors with 500
+                StatusCode::BAD_REQUEST,
                 err.to_string(),
             )));
         }
