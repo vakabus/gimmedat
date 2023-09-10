@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use futures_lite::Stream;
 use futures_lite::StreamExt;
 use serde_derive::{Deserialize, Serialize};
+use tokio::time::Instant;
 use tracing::error;
 use tracing::warn;
 
@@ -185,6 +186,7 @@ async fn calculate_existing_dir_size(dir: &Path) -> anyhow::Result<u64> {
     let mut size = 0u64;
     let mut stack: Vec<DirEntry> = vec![];
     let mut count = 0;
+    let start_time = Instant::now();
     extend(&mut stack, Box::pin(read_dir(dir).await?)).await?;
 
     while let Some(dir) = stack.pop() {
@@ -192,6 +194,12 @@ async fn calculate_existing_dir_size(dir: &Path) -> anyhow::Result<u64> {
         count += 1;
         if count == 1000 {
             warn!("traversing huge directory with more than 1000 files");
+        }
+        if start_time.elapsed() > Duration::from_secs(2) {
+            error!("calculating total directory size takes more than 2 seconds, processed {} files so far", count);
+            return Err(anyhow!(
+                "directory has too many files, size calculation takes too long"
+            ));
         }
 
         // accounting
@@ -204,11 +212,6 @@ async fn calculate_existing_dir_size(dir: &Path) -> anyhow::Result<u64> {
         if metadata.is_dir() {
             extend(&mut stack, Box::pin(read_dir(dir.path()).await?)).await?;
         }
-    }
-
-    // monitoring
-    if count > 1000 {
-        warn!("the directory had {} children", count);
     }
 
     Ok(size)
