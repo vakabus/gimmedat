@@ -1,7 +1,8 @@
-use async_std::task;
 use clap::Parser;
+use tokio::runtime::Runtime;
 use web::start_webserver;
 
+mod capability;
 mod crypto;
 mod data;
 mod templates;
@@ -16,9 +17,9 @@ pub struct Args {
     #[clap(short, long)]
     secret: String,
 
-    /// Allow unlimited uploads to a given directory on the root url
+    /// Do not check for the secret
     #[clap(long)]
-    public_access: Option<String>,
+    public: bool,
 
     /// TCP port to listen on
     #[clap(short, long, default_value_t = 3000)]
@@ -32,7 +33,14 @@ pub struct Args {
     base_url: String,
 }
 
-fn main() -> tide::Result<()> {
+fn main() -> anyhow::Result<()> {
+    /* configure tracing */
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
+
     let args = Args::parse();
-    task::block_on(start_webserver(args))
+
+    let rt = Runtime::new()?;
+    rt.block_on(start_webserver(args))
 }

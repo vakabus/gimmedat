@@ -1,14 +1,39 @@
+<!-- MVP.css quickstart template: https://github.com/andybrewer/mvp/ -->
+
 <!DOCTYPE html>
-<html>
+<html lang="en" color-mode="user">
+
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Gimmedat</title>
     <style>
-        {% include "style.css" %}
+        {%- include "custom.css" -%}
+        {%- include "mvp.css" -%}
     </style>
+
+    <meta charset="utf-8">
+    <meta name="description" content="Gimmedat - a personal data sharing tool">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Gimmedat</title>
 </head>
+
 <body>
-    {% block body %}
-    {% endblock %}
+    <header>
+        <h1>Gimmedat</h1>
+        {% block header %}
+        {% endblock %}
+    </header>
+    <main>
+        {% block body %}
+        {% endblock %}
+    </main>
+    <footer>
+        <hr style="margin: 0">
+        <section>
+            <div>
+                <small>Gimmedat is an open source software under the MIT Licence. The source code is available on <a href="https://github.com/vakabus/gimmedat">GitHub</a>.</small>
+            </div>
+        </section>
+    </footer>
 </body>
+
 </html>

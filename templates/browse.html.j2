@@ -1,0 +1,109 @@
+{% extends "layout.html.j2" %}
+{% block body %}
+
+{% if cap.can_write() %}
+<div>
+    <section>
+        {% if cap.is_enforcing_size_limit() || cap.is_enforcing_time_limit() %}
+        <aside>
+            <h2>Limits</h2>
+            <ul>
+                {% if cap.is_enforcing_size_limit() %}
+                    <li>currently using <span id="bytes">{{ current_bytes }}B</span> out of <span id="max-bytes">{{ maxsize_bytes}}B</span></li>
+                {% endif %}
+                {% if cap.is_enforcing_time_limit() %}
+                    <li><b>expires in <span id="remaining">{{ remaining_sec }} seconds</span></b></li>
+                {% endif %}
+            </ul>
+        </aside>
+        {% endif %}
+        <aside>
+            <button style="width: 100%" onclick="document.getElementById('file').click()" id="upload-btn"><h2>&#8594; Upload files &#8592;</h2></button>
+            <input type="file" id="file" multiple style="display: none;"/>
+            <p class="center" id="status">No files selected...</p>
+            <div id="overall" class="progressbar" style="display: none;"><div class="label">0/0</div><div class="bar"></div></div>
+            <div id="single-file" class="progressbar" style="display: none;"><div class="label">0/0</div><div class="bar" /></div></div>
+        </aside>
+        <aside>
+            <h2>Upload with curl</h2>
+            <p>Click to copy the command template:</p>
+            <code class="code-scroll" onclick="window.getSelection().selectAllChildren(this); document.execCommand('copy');" id="curl">curl "{{ url }}" -T path/to/file/to/upload.ext</code>
+            <script>
+                // this snippet fixes the weirdness of different curl link (a new nonce is used during encryption => different link)
+                document.getElementById("curl").innerHTML = `curl "${window.location}" -T path/to/file/to/upload.ext`
+            </script>
+        </aside>
+
+        <script>
+            {% include "upload.js.j2" %}
+        </script>
+    </section>
+</div>
+{% endif %}
+
+{% if cap.can_be_modified() %}
+<div>
+    <section>
+        <aside>
+            <h2>Modify capability</h2>
+            <ul>
+                {% if cap.can_list() %}
+                    <li><a href="{{update_url}}?block_list=true">Hide file list</a></li>
+                {% endif %}
+                {% if cap.can_read() %}
+                    <li><a href="{{update_url}}?block_read=true">Block downloads</a></li>
+                {% endif %}
+                {% if cap.can_write() %}
+                    <li><a href="{{update_url}}?block_write=true">Block uploads</a></li>
+                {% endif %}
+                <li><a href="{{update_url}}?block_capability_changes=true">Prevent capability modifications</a></li>
+            </ul>
+        </aside>
+        <form action="{{update_url}}" method="GET">
+            <h2>Configure limits</h2>
+            <label for="limit-size">Size limit (e.g. 2GB)</label>
+            <input type="text" id="remaining_bytes" name="remaining_bytes" style="width: calc(100% - 1.6rem)"/>
+            <label for="limit-size">Link expiration (e.g 2d)</label>
+            <input type"text" id="remaining_seconds" name="remaining_seconds" style="width: calc(100% - 1.6rem)"/>
+            <button type="submit">Enforce limits</button>
+        </form>
+    </section>
+</div>
+{% endif %}
+
+{% if cap.can_list() %}
+<article>
+    <h1>Files</h1>
+    {% if cap.can_be_modified() %}
+        <p><a href="{{update_url}}?block_list=true">Hide this list</a> {% if cap.can_read() %}<a href="{{update_url}}?block_read=true">Block downloads</a>{% endif %}</p>
+    {% endif %}
+    {% if let Some(files) = files %}
+        <div id="file-list">
+            <large><b>Name</b></large>
+            {% for file in files %}
+            <div>
+                {% if cap.can_read() %}
+                    <a href="{{ file.link }}">{{ file.name }}{% if !file.is_file %}/{% endif %}</a>
+                {% else %}
+                    {% if file.is_file %}
+                        {{ file.name }}{% if !file.is_file %}/{% endif %}
+                    {% else %}
+                        <a href="{{ file.link }}">{{ file.name }}{% if !file.is_file %}/{% endif %}</a>
+                    {% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p><i>There are no files in this directory. 😢</i></p>
+    {% endif %}
+</article>
+{% endif %}
+
+{% if !cap.can_list() && !cap.can_write() %}
+<article>
+    <p>You are not allowed to do anything with this link. Sorry. 🤷</p>
+</article>
+{% endif %}
+
+{% endblock %}

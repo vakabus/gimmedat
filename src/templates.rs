@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use askama::Template;
 
-use crate::data::{Directory, UploadCapability};
+use crate::{capability::Capability, data::Directory, web::Context};
 
 #[derive(Template)]
 #[template(path = "index.html.j2")]
@@ -13,42 +11,6 @@ pub struct IndexTemplate {
 impl IndexTemplate {
     pub fn new(invalid_secret: bool) -> Self {
         Self { invalid_secret }
-    }
-}
-
-#[derive(Template)]
-#[template(path = "upload.html.j2")]
-pub struct UploadHelpTemplate<'a> {
-    remaining_sec: u64,
-    maxsize_bytes: u64,
-    url: &'a str,
-    uploaded_files: Vec<String>,
-}
-
-impl<'a> UploadHelpTemplate<'a> {
-    pub async fn from(
-        url: &'a str,
-        cap: &'a UploadCapability,
-        dir: Arc<Directory>,
-    ) -> UploadHelpTemplate<'a> {
-        Self {
-            remaining_sec: if cap.is_expired() {
-                0
-            } else {
-                cap.remaining_time_secs()
-            },
-            maxsize_bytes: dir.get_remaining_bytes(cap),
-            url,
-            uploaded_files: dir
-                .list_files()
-                .await
-                .into_iter()
-                .map(|r| {
-                    r.into_string()
-                        .unwrap_or("INVALID UTF8 FILENAME".to_owned())
-                })
-                .collect(),
-        }
     }
 }
 
@@ -65,5 +27,65 @@ impl UploadResponseTemplate {
             uploaded_bytes: bytes,
             msgs,
         }
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub struct File {
+    is_file: bool,
+    name: String,
+    link: String,
+}
+
+impl File {
+    pub fn new(is_file: bool, name: String, link: String) -> Self {
+        Self {
+            is_file,
+            name,
+            link,
+        }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "browse.html.j2")]
+pub struct BrowseTemplate {
+    files: Option<Vec<File>>,
+    current_bytes: u64,
+    maxsize_bytes: u64,
+    remaining_sec: u64,
+    cap: Capability,
+    url: String,
+    update_url: String,
+}
+
+impl BrowseTemplate {
+    pub fn new(
+        cap: Capability,
+        ctx: &Context,
+        dir: &(dyn Directory + Send + Sync),
+        files: Option<Vec<File>>,
+    ) -> Self {
+        Self {
+            files,
+            current_bytes: dir.get_total_bytes(),
+            maxsize_bytes: cap.size_limit(),
+            remaining_sec: cap.remaining_time_secs(),
+            url: ctx.create_absolute_link(&cap),
+            update_url: ctx.create_relative_update_url(&cap),
+            cap,
+        }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "error.html.j2")]
+pub struct ErrorTemplate {
+    error: String,
+}
+
+impl ErrorTemplate {
+    pub fn new(error: String) -> Self {
+        Self { error }
     }
 }

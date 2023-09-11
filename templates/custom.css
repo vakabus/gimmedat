@@ -1,0 +1,63 @@
+
+
+#file-list {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+
+    border: 1px solid var(--color-bg-secondary);
+    border-radius: var(--border-radius);
+    border-spacing: 0;
+}
+
+#file-list > *:first-child {
+    background-color: var(--color-table);
+    color: var(--color-bg);
+    border-radius: var(--border-radius);
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+#file-list > * {
+    display: block;
+    padding: 0.5rem 0.5rem;
+}
+
+#file-list > * * {
+    width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#file-list > *:hover:not(:first-child) {
+    background-color: var(--color-accent);
+}
+
+
+.progressbar > .bar {
+    background-color: rgba(120, 255, 138, 0.753);
+    width: 0%;
+    height: 100%;
+}
+.progressbar > .label {
+    width: 100%;
+    color: white;
+    text-align: center;
+    float: left;
+    line-height: 1.5em;
+}
+.progressbar {
+    margin-top: 0.5em;
+    background-color: lightgray;
+    width: 100%;
+    height: 1.5em;
+    border-radius: 0.2em;
+    overflow: hidden;
+}
+
+.code-scroll {
+    overflow-x: scroll;
+    white-space: nowrap;
+    max-width: calc(100% - 1.6rem);
+}
