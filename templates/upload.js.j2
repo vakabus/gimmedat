@@ -114,7 +114,9 @@ fileInput.onchange = async (event) => {
     }
     let processedFiles = 0
     let processedSize = 0
+    let errors = []
 
+    document.getElementById("upload-btn").setAttribute("disabled", "disabled")
     document.getElementById("overall").style.display = totalFiles > 1 ? "block" : "none"
     document.getElementById("single-file").style.display = "block"
 
@@ -131,21 +133,26 @@ fileInput.onchange = async (event) => {
         }).catch((e) => {
             console.error("Error while uploading", f.name)
             console.log(e)
-            alert(`Error while uploading ${f.name}: ${e.message}`)
+            errors.push([f.name, e.message])
         })
 
         processedFiles += 1;
 
         // add the file name to the list of uploaded files
         let node = document.createElement('div');
-        node.appendChild(document.createTextNode(encodeURIComponent(f.name)));
+        node.appendChild(document.createTextNode(f.name));
         document.getElementById("file-list").appendChild(node)
     }
 
     // at the end, set all status information to final
-    status.innerText = totalFiles == 1 ? `File ${files[0].name} uploaded!` : `All ${totalFiles} files uploaded!`
+    status.innerText = totalFiles == 1 ? `File ${files[0].name} uploaded!` : `${totalFiles} files uploaded, ${errors.length} failed!`
+    document.getElementById("upload-btn").removeAttribute("disabled")
     update_progressbar("overall", totalSize, totalSize)
     update_progressbar("single-file", files[files.length - 1].size, files[files.length - 1].size)
+
+    if (errors.length > 0) {
+        alert("Upload finished, but not all files were uploaded successfully:\n\n" + errors.map(([f,e]) => `${f}: ${e.trim()}`).join("\n"))
+    }
 
     // and reset file input
     fileInput.value = "";
