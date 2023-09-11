@@ -13,7 +13,8 @@ use tokio::time::sleep;
 use tracing::log::warn;
 use urlencoding::encode;
 
-use crate::data::{Capability, Directory, FileRef};
+use crate::capability::Capability;
+use crate::data::{Directory, FileRef};
 use crate::templates::{BrowseTemplate, ErrorTemplate, IndexTemplate};
 
 use super::Context;

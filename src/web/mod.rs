@@ -5,8 +5,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tower_http::cors::{Any, CorsLayer};
 
+use crate::capability::Capability;
 use crate::crypto::CryptoState;
-use crate::data::{Capability, Directory, DirectoryRegistry};
+use crate::data::{Directory, DirectoryRegistry};
 use crate::Args;
 use axum::body::Body;
 use axum::http::{Request, Response, StatusCode};

@@ -11,7 +11,7 @@ use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Deserializer};
 use tracing::{info, warn};
 
-use crate::{data::Capability, templates::UploadResponseTemplate};
+use crate::{capability::Capability, templates::UploadResponseTemplate};
 
 use super::Context;
 

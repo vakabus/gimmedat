@@ -2,6 +2,7 @@ use clap::Parser;
 use tokio::runtime::Runtime;
 use web::start_webserver;
 
+mod capability;
 mod crypto;
 mod data;
 mod templates;

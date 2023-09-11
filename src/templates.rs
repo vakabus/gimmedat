@@ -1,9 +1,6 @@
 use askama::Template;
 
-use crate::{
-    data::{Capability, Directory},
-    web::Context,
-};
+use crate::{capability::Capability, data::Directory, web::Context};
 
 #[derive(Template)]
 #[template(path = "index.html.j2")]

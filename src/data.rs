@@ -11,13 +11,11 @@ use async_std::sync::Mutex;
 use async_trait::async_trait;
 use futures_lite::Stream;
 use futures_lite::StreamExt;
-use serde_derive::{Deserialize, Serialize};
 use tokio::time::Instant;
 use tracing::error;
 use tracing::warn;
 
 use std::collections::HashMap;
-use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::os::unix::prelude::MetadataExt;
 use std::pin::Pin;
@@ -28,143 +26,8 @@ use std::sync::Arc;
 use std::sync::Weak;
 use std::time::Duration;
 use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
-fn current_unix_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
-
-/// A struct representing a capability. Stored encrypted and signed in the URLs.
-///
-/// The awful one letter naming makes the URL shorter
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct Capability {
-    /// path name
-    p: String,
-    /// size limit in bytes (u64::MAX = non-enforcing)
-    s: u64,
-    /// timeout (unix timestamp)
-    t: u64,
-    /// owner of this capability is allowed to download files
-    r: bool,
-    /// owner of this capability is allowed to upload files
-    w: bool,
-    /// owner of this capability is allowed to list directories
-    x: bool,
-    /// owner of this capability is allowed to modify this capability
-    c: bool,
-}
-
-impl Capability {
-    pub fn size_limit(&self) -> u64 {
-        self.s
-    }
-
-    pub fn is_enforcing_size_limit(&self) -> bool {
-        self.s != u64::MAX
-    }
-
-    pub fn is_enforcing_time_limit(&self) -> bool {
-        self.t != u64::MAX
-    }
-
-    /// Construct a capability with full privileges
-    pub fn root() -> Self {
-        Capability {
-            p: ".".to_owned(),
-            s: u64::MAX,
-            t: u64::MAX,
-            w: true,
-            r: true,
-            x: true,
-            c: true,
-        }
-    }
-
-    pub fn is_expired(&self) -> bool {
-        self.t < current_unix_timestamp()
-    }
-
-    pub fn expiration_time(&self) -> SystemTime {
-        let dur = Duration::from_secs(self.t);
-        match UNIX_EPOCH.checked_add(dur) {
-            Some(exp_time) => exp_time,
-            None => {
-                // the link is valid for u64::MAX seconds and an overflow happens
-                // the following expression also results in a huge timestamp far away in the future,
-                // but it does not overflow
-                UNIX_EPOCH + Duration::MAX.div_f64(4.0)
-            }
-        }
-    }
-
-    /// Works properly only when not expired
-    pub fn remaining_time_secs(&self) -> u64 {
-        assert!(!self.is_expired());
-        self.t - current_unix_timestamp()
-    }
-
-    pub fn path(&self) -> &async_std::path::Path {
-        async_std::path::Path::new(&self.p)
-    }
-
-    pub fn child(&self, name: &OsStr) -> Self {
-        //FIXME better name
-        let mut new = self.clone();
-        let newpath = new.path().join(name);
-        new.p = newpath.to_string_lossy().into(); // FIXME this is wrong, the `p` field should probably be OsString or just a byte array
-        new
-    }
-
-    pub fn can_list(&self) -> bool {
-        self.x
-    }
-
-    pub fn can_read(&self) -> bool {
-        self.r
-    }
-
-    pub fn can_write(&self) -> bool {
-        self.w
-    }
-
-    pub fn can_be_modified(&self) -> bool {
-        self.c
-    }
-
-    pub fn block_listing(self) -> Self {
-        Capability { x: false, ..self }
-    }
-
-    pub fn block_reading(self) -> Self {
-        Capability { r: false, ..self }
-    }
-
-    pub fn block_writing(self) -> Self {
-        Capability { w: false, ..self }
-    }
-
-    pub fn block_capability_modifications(self) -> Self {
-        Capability { c: false, ..self }
-    }
-
-    pub fn set_size_limit(self, new: u64) -> Self {
-        Capability {
-            s: u64::min(new, self.s),
-            ..self
-        }
-    }
-
-    pub fn set_remaining_secs(self, new: u64) -> Self {
-        Capability {
-            t: u64::min(u64::saturating_add(current_unix_timestamp(), new), self.t),
-            ..self
-        }
-    }
-}
+use crate::capability::Capability;
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub enum FileRef {
