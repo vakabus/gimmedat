@@ -34,6 +34,31 @@ fn current_unix_timestamp() -> u64 {
         .as_secs()
 }
 
+fn pack_bools<const N: usize>(arr: [bool; N]) -> u16 {
+    let mut res = 0;
+    for b in arr {
+        res <<= 1;
+        res |= b as u16;
+    }
+    res
+}
+
+fn unpack_bools<const N: usize>(mut val: u16) -> [bool; N] {
+    let mut res = [false; N];
+    for i in (0..N).rev() {
+        res[i] = (val & 0x1) != 0;
+        val >>= 1;
+    }
+    res
+}
+
+#[test]
+fn test_bool_packing() {
+    let a = pack_bools([true, false, true, false]);
+    let b: [bool; 4] = unpack_bools(a);
+    assert_eq!(b, [true, false, true, false]);
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 enum SerializableCapability {
     #[serde(rename = "1")]
@@ -51,14 +76,8 @@ struct V1Capability {
     s: u64,
     /// timeout (unix timestamp)
     t: u64,
-    /// owner of this capability is allowed to download files
-    r: bool,
-    /// owner of this capability is allowed to upload files
-    w: bool,
-    /// owner of this capability is allowed to list directories
-    x: bool,
-    /// owner of this capability is allowed to modify this capability
-    c: bool,
+    /// bit flags (read, write, list, change)
+    f: u16,
 }
 
 impl SerializableCapability {
@@ -69,7 +88,7 @@ impl SerializableCapability {
 }
 
 /// Internal representation of a capability.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Capability {
     /// path name
     path: String,
@@ -95,14 +114,15 @@ impl From<SerializableCapability> for Capability {
 
         // construct the internal capability representation
         let SerializableCapability::Latest(inner) = value;
+        let [r, w, l, c] = unpack_bools(inner.f);
         Capability {
             path: inner.p,
             size_limit: inner.s,
             timeout: inner.t,
-            allow_reading: inner.r,
-            allow_writing: inner.w,
-            allow_listing: inner.x,
-            allow_changing: inner.c,
+            allow_reading: r,
+            allow_writing: w,
+            allow_listing: l,
+            allow_changing: c,
         }
     }
 }
@@ -113,10 +133,12 @@ impl From<&Capability> for SerializableCapability {
             p: value.path.clone(),
             s: value.size_limit,
             t: value.timeout,
-            r: value.allow_reading,
-            w: value.allow_writing,
-            x: value.allow_listing,
-            c: value.allow_changing,
+            f: pack_bools([
+                value.allow_reading,
+                value.allow_writing,
+                value.allow_listing,
+                value.allow_changing,
+            ]),
         })
     }
 }

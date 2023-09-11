@@ -71,18 +71,34 @@ impl CryptoState {
     }
 }
 
-#[test]
-fn test_reversability() {
-    let c = CryptoState::new("secretkey");
-    const PLAIN: &[u8] = b"some text which is not really long but not short either";
-    let encrypted = c.encrypt_raw(PLAIN);
-    let decrypted = c.decrypt_raw(&encrypted).expect("failed decryption");
-    assert_eq!(PLAIN, &decrypted);
-}
+#[cfg(test)]
+mod test {
+    use std::ffi::OsString;
 
-#[test]
-fn test_encrypted_twice_with_different_results() {
-    let c = CryptoState::new("secretkey");
-    const PLAIN: &[u8] = b"plaintext";
-    assert_ne!(c.encrypt_raw(PLAIN), c.encrypt_raw(PLAIN));
+    use crate::{capability::Capability, crypto::CryptoState};
+
+    #[test]
+    fn test_reversability() {
+        let c = CryptoState::new("secretkey");
+        const PLAIN: &[u8] = b"some text which is not really long but not short either";
+        let encrypted = c.encrypt_raw(PLAIN);
+        let decrypted = c.decrypt_raw(&encrypted).expect("failed decryption");
+        assert_eq!(PLAIN, &decrypted);
+    }
+
+    #[test]
+    fn test_encrypted_twice_with_different_results() {
+        let c = CryptoState::new("secretkey");
+        const PLAIN: &[u8] = b"plaintext";
+        assert_ne!(c.encrypt_raw(PLAIN), c.encrypt_raw(PLAIN));
+    }
+
+    #[test]
+    fn test_crypto_end2end() {
+        let crypto = CryptoState::new("secret");
+        let cap = Capability::root().child(&OsString::from("subdir"));
+        let token = crypto.encrypt(&cap);
+        let ncap: Capability = crypto.decrypt(token).expect("should be decryptable");
+        assert_eq!(ncap, cap);
+    }
 }
